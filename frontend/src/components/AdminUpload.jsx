@@ -1,18 +1,17 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { AlertCircle, CheckCircle2, Download, File, Loader2, UploadCloud } from 'lucide-react';
-import axios from 'axios';
 import { cn } from '../lib/utils.js';
+import api from '../lib/api.js';
+import { useAuth } from '../hooks/useAuth.js';
 
 const AdminUpload = () => {
+  const { user } = useAuth();
   const [file, setFile] = useState(null);
   const [status, setStatus] = useState('idle');
   const [message, setMessage] = useState('');
   const [documents, setDocuments] = useState([]);
   const [isLoadingDocuments, setIsLoadingDocuments] = useState(true);
-
-  const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-
   const onDrop = useCallback((acceptedFiles) => {
     if (acceptedFiles?.length > 0) {
       setFile(acceptedFiles[0]);
@@ -24,7 +23,7 @@ const AdminUpload = () => {
   const loadDocuments = useCallback(async () => {
     try {
       setIsLoadingDocuments(true);
-      const response = await axios.get(`${apiBaseUrl}/api/admin/documents`);
+      const response = await api.get('/api/admin/documents');
       if (response.data.success) {
         setDocuments(response.data.documents || []);
       }
@@ -33,7 +32,7 @@ const AdminUpload = () => {
     } finally {
       setIsLoadingDocuments(false);
     }
-  }, [apiBaseUrl]);
+  }, []);
 
   useEffect(() => {
     loadDocuments();
@@ -55,7 +54,7 @@ const AdminUpload = () => {
       const formData = new FormData();
       formData.append('file', file);
 
-      const uploadRes = await axios.post(`${apiBaseUrl}/api/admin/upload`, formData, {
+      const uploadRes = await api.post('/api/admin/upload', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
 
@@ -70,7 +69,7 @@ const AdminUpload = () => {
           : 'Chunking and embedding the uploaded PDF...',
       );
 
-      const processRes = await axios.post(`${apiBaseUrl}/api/admin/process`, {
+      const processRes = await api.post('/api/admin/process', {
         docId: uploadRes.data.docId,
       });
 
@@ -89,14 +88,50 @@ const AdminUpload = () => {
     }
   };
 
+  const handleDownload = async (document) => {
+    try {
+      const response = await api.get(`/api/admin/documents/${document.docId}/download`, {
+        responseType: 'blob',
+      });
+
+      const blobUrl = window.URL.createObjectURL(new Blob([response.data]));
+      const link = window.document.createElement('a');
+      link.href = blobUrl;
+      link.download = document.fileName;
+      window.document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (downloadError) {
+      console.error(downloadError);
+      setStatus('error');
+      setMessage(downloadError.response?.data?.error || 'Unable to download the selected PDF.');
+    }
+  };
+
   return (
-    <section className="glass-panel rounded-[32px] p-4 shadow-[0_30px_80px_rgba(2,8,23,0.45)] sm:p-6">
-      <div className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
-        <div className="rounded-[28px] border border-slate-200/80 bg-white/65 p-6 dark:border-white/10 dark:bg-white/4">
+    <section className="glass-panel rounded-[28px] p-3.5 shadow-[0_24px_64px_rgba(2,8,23,0.42)] sm:p-5">
+      <div className="mb-5 rounded-[24px] border border-slate-200/80 bg-white/65 p-4 dark:border-white/10 dark:bg-slate-950/40">
+        <p className="text-xs uppercase tracking-[0.28em] text-teal-700/75 dark:text-teal-200/75">Admin Workspace</p>
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-slate-900 dark:text-white sm:text-2xl">Document management</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
+              Signed in as {user?.fullName}. Only admin accounts can upload, process, and download indexed municipal PDFs.
+            </p>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs uppercase tracking-[0.24em] text-slate-500 dark:border-white/8 dark:bg-white/5 dark:text-slate-400">
+            role: {user?.role}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-[1.05fr_0.95fr]">
+        <div className="rounded-[24px] border border-slate-200/80 bg-white/65 p-4 sm:p-5 dark:border-white/10 dark:bg-white/4">
           <div
             {...getRootProps()}
             className={cn(
-              'group flex min-h-[23rem] cursor-pointer flex-col items-center justify-center rounded-[28px] border border-dashed p-8 text-center transition-all duration-300',
+              'group flex min-h-[16rem] cursor-pointer flex-col items-center justify-center rounded-[24px] border border-dashed p-5 text-center transition-all duration-300 sm:min-h-[19rem] sm:p-6',
               isDragActive
                 ? 'border-teal-300 bg-teal-300/10 shadow-[0_24px_60px_rgba(45,212,191,0.12)]'
                 : 'border-slate-300 bg-white hover:border-teal-300 hover:bg-teal-50/40 dark:border-white/14 dark:bg-slate-950/35 dark:hover:border-teal-200/35 dark:hover:bg-slate-950/50',
@@ -104,28 +139,28 @@ const AdminUpload = () => {
             )}
           >
             <input {...getInputProps()} />
-            <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-[26px] border border-teal-200 bg-white text-teal-600 shadow-[0_18px_50px_rgba(20,184,166,0.1)] dark:border-white/12 dark:bg-white/8 dark:text-teal-200 dark:shadow-[0_18px_50px_rgba(20,184,166,0.12)]">
-              {file ? <File size={34} /> : <UploadCloud size={34} />}
+            <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-[22px] border border-teal-200 bg-white text-teal-600 shadow-[0_18px_50px_rgba(20,184,166,0.1)] dark:border-white/12 dark:bg-white/8 dark:text-teal-200 dark:shadow-[0_18px_50px_rgba(20,184,166,0.12)]">
+              {file ? <File size={28} /> : <UploadCloud size={28} />}
             </div>
 
             {file ? (
               <div>
-                <p className="text-xl font-semibold text-slate-900 dark:text-white">{file.name}</p>
+                <p className="text-lg font-semibold text-slate-900 dark:text-white">{file.name}</p>
                 <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
               </div>
             ) : (
               <div>
-                <p className="text-xl font-semibold text-slate-900 dark:text-white">Drag and drop your PDF here</p>
-                <p className="mt-3 text-sm leading-7 text-slate-600 dark:text-slate-300">or click to browse and upload a clean text-based file</p>
+                <p className="text-lg font-semibold text-slate-900 dark:text-white">Drag and drop your PDF here</p>
+                <p className="mt-2.5 text-sm leading-6 text-slate-600 dark:text-slate-300">or click to browse and upload a clean text-based file</p>
               </div>
             )}
           </div>
         </div>
 
         <div className="flex flex-col gap-4">
-          <div className="rounded-[28px] border border-slate-200/80 bg-white/65 p-6 dark:border-white/10 dark:bg-slate-950/40">
+          <div className="rounded-[24px] border border-slate-200/80 bg-white/65 p-4 sm:p-5 dark:border-white/10 dark:bg-slate-950/40">
             <p className="text-xs font-semibold uppercase tracking-[0.28em] text-teal-700/75 dark:text-teal-200/75">Upload Workflow</p>
-            <div className="mt-5 space-y-4">
+            <div className="mt-4 space-y-3">
               {[
                 'Upload the PDF from the admin panel',
                 'Backend extracts text and creates chunks',
@@ -144,7 +179,7 @@ const AdminUpload = () => {
           {status !== 'idle' && (
             <div
               className={cn(
-                'rounded-[28px] border p-5',
+                'rounded-[24px] border p-4',
                 status === 'error' && 'border-rose-400/20 bg-rose-500/10 text-rose-100',
                 status === 'success' && 'border-emerald-400/20 bg-emerald-500/10 text-emerald-100',
                 (status === 'uploading' || status === 'processing') && 'border-sky-400/20 bg-sky-500/10 text-sky-100',
@@ -154,7 +189,7 @@ const AdminUpload = () => {
                 {status === 'error' && <AlertCircle className="mt-0.5 shrink-0" size={18} />}
                 {status === 'success' && <CheckCircle2 className="mt-0.5 shrink-0" size={18} />}
                 {(status === 'uploading' || status === 'processing') && <Loader2 className="mt-0.5 shrink-0 animate-spin" size={18} />}
-                <p className="text-sm leading-7">{message}</p>
+                <p className="text-sm leading-6">{message}</p>
               </div>
             </div>
           )}
@@ -162,7 +197,7 @@ const AdminUpload = () => {
           <button
             onClick={handleUploadAndProcess}
             disabled={!file || status === 'uploading' || status === 'processing'}
-            className="inline-flex items-center justify-center gap-2 rounded-[22px] bg-gradient-to-r from-teal-300 via-cyan-300 to-amber-200 px-6 py-4 text-sm font-semibold text-slate-950 transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[18px] bg-gradient-to-r from-teal-300 via-cyan-300 to-amber-200 px-6 py-3.5 text-sm font-semibold text-slate-950 transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {(status === 'uploading' || status === 'processing') ? <Loader2 className="animate-spin" size={18} /> : <UploadCloud size={18} />}
             {(status === 'uploading' || status === 'processing') ? 'Processing...' : 'Upload & Index'}
@@ -170,8 +205,8 @@ const AdminUpload = () => {
         </div>
       </div>
 
-      <div className="mt-6 rounded-[28px] border border-slate-200/80 bg-white/65 p-5 dark:border-white/10 dark:bg-slate-950/40">
-        <div className="mb-4 flex items-center justify-between gap-3">
+      <div className="mt-5 rounded-[24px] border border-slate-200/80 bg-white/65 p-4 dark:border-white/10 dark:bg-slate-950/40">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Uploaded PDFs</h3>
           <span className="text-xs uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
             {documents.length} file{documents.length === 1 ? '' : 's'}
@@ -190,16 +225,17 @@ const AdminUpload = () => {
         ) : (
           <div className="space-y-3">
             {documents.map((document) => (
-              <a
+              <button
                 key={document.docId}
-                href={`${apiBaseUrl}/api/admin/documents/${document.docId}/download`}
-                className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 transition hover:border-teal-300 hover:bg-teal-50/40 dark:border-white/8 dark:bg-white/5 dark:hover:border-teal-200/35 dark:hover:bg-white/8"
+                type="button"
+                onClick={() => handleDownload(document)}
+                className="flex min-h-11 items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left transition hover:border-teal-300 hover:bg-teal-50/40 dark:border-white/8 dark:bg-white/5 dark:hover:border-teal-200/35 dark:hover:bg-white/8"
               >
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-slate-900 dark:text-white">{document.fileName}</p>
                 </div>
                 <Download size={16} className="shrink-0 text-slate-500 dark:text-slate-300" />
-              </a>
+              </button>
             ))}
           </div>
         )}
