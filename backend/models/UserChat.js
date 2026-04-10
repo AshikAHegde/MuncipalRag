@@ -58,6 +58,10 @@ const chatItemSchema = new mongoose.Schema(
       type: [sourceSchema],
       default: [],
     },
+    review: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
     askedAt: {
       type: Date,
       default: Date.now,

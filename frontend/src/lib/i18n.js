@@ -45,6 +45,10 @@ export const translations = {
     audioPlaybackFailed: 'Audio playback failed. Please try again.',
     audioPlayError: 'Unable to play speech.',
     missingAnswer: 'I could not find the answer in the provided document.',
+    exportPdf: 'Export PDF report',
+    exportExcel: 'Export Excel report',
+    exportFailed: 'Could not export report. Please try again.',
+    exportUnavailable: 'Structured compliance review data is not available for export.',
   },
   hi: {
     newChat: 'नई चैट',
@@ -84,6 +88,10 @@ export const translations = {
     audioPlaybackFailed: 'ऑडियो चलाने में समस्या हुई। कृपया फिर से कोशिश करें।',
     audioPlayError: 'स्पीच चलाना संभव नहीं हुआ।',
     missingAnswer: 'मुझे दिए गए दस्तावेज़ में इसका उत्तर नहीं मिला।',
+    exportPdf: 'PDF रिपोर्ट एक्सपोर्ट करें',
+    exportExcel: 'Excel रिपोर्ट एक्सपोर्ट करें',
+    exportFailed: 'रिपोर्ट एक्सपोर्ट नहीं हो सकी। कृपया फिर से कोशिश करें।',
+    exportUnavailable: 'एक्सपोर्ट के लिए संरचित अनुपालन डेटा उपलब्ध नहीं है।',
   },
   mr: {
     newChat: 'नवीन चॅट',
@@ -123,6 +131,10 @@ export const translations = {
     audioPlaybackFailed: 'ऑडिओ प्लेबॅकमध्ये अडचण आली. कृपया पुन्हा प्रयत्न करा.',
     audioPlayError: 'स्पीच प्ले करता आले नाही.',
     missingAnswer: 'मला दिलेल्या दस्तावेजात याचे उत्तर सापडले नाही.',
+    exportPdf: 'PDF अहवाल एक्सपोर्ट करा',
+    exportExcel: 'Excel अहवाल एक्सपोर्ट करा',
+    exportFailed: 'अहवाल एक्सपोर्ट करता आला नाही. कृपया पुन्हा प्रयत्न करा.',
+    exportUnavailable: 'एक्सपोर्टसाठी संरचित अनुपालन डेटा उपलब्ध नाही.',
   },
 };
 

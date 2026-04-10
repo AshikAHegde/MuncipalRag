@@ -2,6 +2,7 @@ import {
   analyzeSubmissionAgainstRules,
   answerQuestion,
 } from "../services/ragService.js";
+import { buildComplianceReport } from "../services/reportService.js";
 import { translateChatSessionsAtReadTime } from "../services/translationService.js";
 import UserChat from "../models/UserChat.js";
 
@@ -13,6 +14,7 @@ function normalizeChatItem(chat, index = 0) {
     question: chat?.question || "",
     answer: chat?.answer || "",
     sources: Array.isArray(chat?.sources) ? chat.sources : [],
+    review: chat?.review ?? null,
     askedAt: chat?.askedAt || null,
   };
 }
@@ -111,6 +113,7 @@ export async function queryKnowledgeBase(req, res) {
       question: userMessage,
       answer: result.answer,
       sources: result.sources ?? [],
+      review: result.review ?? null,
       askedAt: new Date(),
     };
 
@@ -172,6 +175,95 @@ export async function queryKnowledgeBase(req, res) {
       success: false,
       error:
         error.message || "Something went wrong while answering the question.",
+    });
+  }
+}
+
+export async function exportComplianceReport(req, res) {
+  try {
+    const format = req.query?.format?.trim()?.toLowerCase() || "pdf";
+    const sessionId = req.query?.sessionId?.trim();
+    const messageId = req.query?.messageId?.trim();
+
+    if (!sessionId || !messageId) {
+      return res.status(400).json({
+        success: false,
+        error: "sessionId and messageId are required.",
+      });
+    }
+
+    if (!["pdf", "excel", "xlsx"].includes(format)) {
+      return res.status(400).json({
+        success: false,
+        error: "Unsupported format. Use pdf or excel.",
+      });
+    }
+
+    const userChat = await UserChat.findOne({ userId: req.user._id });
+    if (!userChat) {
+      return res.status(404).json({
+        success: false,
+        error: "No chat history found for this user.",
+      });
+    }
+
+    const session =
+      typeof userChat.chatSessions?.id === "function"
+        ? userChat.chatSessions.id(sessionId)
+        : null;
+
+    if (!session) {
+      return res.status(404).json({
+        success: false,
+        error: "Chat session not found.",
+      });
+    }
+
+    const message =
+      typeof session.conversations?.id === "function"
+        ? session.conversations.id(messageId)
+        : null;
+
+    if (!message || message.mode !== "compliance_review") {
+      return res.status(404).json({
+        success: false,
+        error: "Compliance review message not found.",
+      });
+    }
+
+    if (!message.review || !Array.isArray(message.review?.lineReviews)) {
+      return res.status(422).json({
+        success: false,
+        error:
+          "Structured review JSON is not available for this item. Run a new compliance review to export.",
+      });
+    }
+
+    const report = await buildComplianceReport({
+      format,
+      sessionTitle: session.title,
+      messageId: message._id?.toString?.() || messageId,
+      askedAt: message.askedAt,
+      submission: message.question,
+      answer: message.answer,
+      review: message.review,
+      sources: Array.isArray(message.sources) ? message.sources : [],
+      language: message.language || req.preferredLanguage || "en",
+    });
+
+    return res
+      .status(200)
+      .set({
+        "Content-Type": report.contentType,
+        "Content-Disposition": `attachment; filename=\"${report.fileName}\"`,
+        "Content-Length": report.buffer.length,
+      })
+      .send(report.buffer);
+  } catch (error) {
+    console.error("Export compliance report failed:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || "Could not export compliance report.",
     });
   }
 }

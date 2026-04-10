@@ -321,6 +321,32 @@ Success response:
 }
 ```
 
+### `GET /api/query/export`
+
+Export a compliance review record as an official audit report file.
+
+Query params:
+- `sessionId` (required): chat session id
+- `messageId` (required): compliance message id within that session
+- `format` (optional): `pdf` or `excel` (default `pdf`)
+
+Example request:
+
+```http
+GET /api/query/export?sessionId=67f5c3d2f91d77f8a1a1b201&messageId=67f5c3d2f91d77f8a1a1b209&format=excel
+Authorization: Bearer <token>
+```
+
+Success response:
+- Returns downloadable file stream as attachment.
+- `Content-Type` is `application/pdf` for PDF or XLSX mime type for Excel.
+
+Common errors:
+- `400` missing `sessionId` or `messageId`, or invalid format
+- `404` session/message not found
+- `422` message exists but has no structured review JSON
+- `500` report generation failed
+
 ## Admin
 
 Important note:
@@ -454,6 +480,7 @@ Authorization: Bearer <your_jwt_token>
 - `POST /api/auth/login`
 - `GET /api/auth/me`
 - `POST /api/query`
+- `GET /api/query/export`
 - `GET /api/admin/documents`
 - `GET /api/admin/documents/:docId/download`
 - `POST /api/admin/upload`

@@ -32,6 +32,7 @@ const normalizeChatSessions = (sessions = []) =>
       question: message.question || '',
       answer: message.answer || '',
       sources: message.sources || [],
+      review: message.review || null,
       askedAt: message.askedAt || null,
     })),
   }));
@@ -509,6 +510,9 @@ const SearchArea = () => {
                 question={message.question}
                 answer={message.answer}
                 sources={message.sources}
+                review={message.review}
+                sessionId={activeSession?.id || null}
+                messageId={message.id}
                 language={message.language || activeSession?.language || selectedLanguage}
                 animateTyping={index === activeMessages.length - 1}
               />

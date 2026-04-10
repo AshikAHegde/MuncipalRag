@@ -1,17 +1,30 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { BookOpen, Check, ChevronDown, ChevronUp, Copy, Square, Volume2 } from 'lucide-react';
+import { BookOpen, Check, ChevronDown, ChevronUp, Copy, FileSpreadsheet, FileText, Loader2, Square, Volume2 } from 'lucide-react';
 import api from '../lib/api.js';
 import { DEFAULT_LANGUAGE, getTranslation } from '../lib/i18n.js';
 
-const AnswerCard = ({ mode = 'chat', language = DEFAULT_LANGUAGE, question, answer, sources, animateTyping = true }) => {
+const AnswerCard = ({
+  mode = 'chat',
+  language = DEFAULT_LANGUAGE,
+  question,
+  answer,
+  sources,
+  review,
+  sessionId,
+  messageId,
+  animateTyping = true,
+}) => {
   const [copied, setCopied] = useState(false);
   const [expandedSources, setExpandedSources] = useState(false);
   const [displayedAnswer, setDisplayedAnswer] = useState('');
   const [isTyping, setIsTyping] = useState(true);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isSpeechLoading, setIsSpeechLoading] = useState(false);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
   const [audioError, setAudioError] = useState('');
+  const [exportError, setExportError] = useState('');
   const audioRef = useRef(null);
   const t = getTranslation(language);
 
@@ -54,6 +67,60 @@ const AnswerCard = ({ mode = 'chat', language = DEFAULT_LANGUAGE, question, answ
     navigator.clipboard.writeText(answer);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
+  };
+
+  const getFileNameFromDisposition = (dispositionHeader, fallbackFileName) => {
+    if (!dispositionHeader) return fallbackFileName;
+
+    const fileNameMatch = dispositionHeader.match(/filename\*?=(?:UTF-8''|\")?([^\";]+)/i);
+    if (!fileNameMatch?.[1]) return fallbackFileName;
+
+    return decodeURIComponent(fileNameMatch[1]).replace(/\"/g, '').trim() || fallbackFileName;
+  };
+
+  const exportReport = async (format) => {
+    if (!sessionId || !messageId) {
+      setExportError(t.exportUnavailable);
+      return;
+    }
+
+    if (!review || !Array.isArray(review.lineReviews)) {
+      setExportError(t.exportUnavailable);
+      return;
+    }
+
+    setExportError('');
+    const setLoading = format === 'pdf' ? setIsExportingPdf : setIsExportingExcel;
+    setLoading(true);
+
+    try {
+      const response = await api.get('/api/query/export', {
+        params: {
+          sessionId,
+          messageId,
+          format,
+        },
+        responseType: 'blob',
+      });
+
+      const extension = format === 'pdf' ? 'pdf' : 'xlsx';
+      const fallbackName = `compliance-audit-report.${extension}`;
+      const fileName = getFileNameFromDisposition(response.headers['content-disposition'], fallbackName);
+      const blobType = response.headers['content-type'] || (format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      const blob = new Blob([response.data], { type: blobType });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setExportError(error.response?.data?.error || error.message || t.exportFailed);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSpeak = async () => {
@@ -137,6 +204,30 @@ const AnswerCard = ({ mode = 'chat', language = DEFAULT_LANGUAGE, question, answ
               >
                 {copied ? <Check size={14} /> : <Copy size={14} />}
               </button>
+              {mode === 'compliance_review' && review?.lineReviews && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => exportReport('pdf')}
+                    disabled={isExportingPdf || isExportingExcel}
+                    className="inline-flex h-8 items-center gap-1 rounded-md px-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-[#6b7280] transition hover:bg-moss-100 hover:text-moss-700 disabled:opacity-50 dark:text-[#a9c3d8] dark:hover:bg-[#26465d] dark:hover:text-[#dce8f3]"
+                    aria-label={t.exportPdf}
+                  >
+                    {isExportingPdf ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}
+                    PDF
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => exportReport('excel')}
+                    disabled={isExportingPdf || isExportingExcel}
+                    className="inline-flex h-8 items-center gap-1 rounded-md px-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-[#6b7280] transition hover:bg-moss-100 hover:text-moss-700 disabled:opacity-50 dark:text-[#a9c3d8] dark:hover:bg-[#26465d] dark:hover:text-[#dce8f3]"
+                    aria-label={t.exportExcel}
+                  >
+                    {isExportingExcel ? <Loader2 size={13} className="animate-spin" /> : <FileSpreadsheet size={13} />}
+                    XLSX
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
@@ -146,6 +237,7 @@ const AnswerCard = ({ mode = 'chat', language = DEFAULT_LANGUAGE, question, answ
           </div>
 
           {audioError && <p className="mt-2 text-xs text-rose-600 dark:text-rose-400">{audioError}</p>}
+          {exportError && <p className="mt-2 text-xs text-rose-600 dark:text-rose-400">{exportError}</p>}
 
           {!isTyping && sources && sources.length > 0 && !isNotAvailable && (
             <div className="mt-4 border-t border-[#e6e0d6] pt-3 dark:border-[#355269]">
