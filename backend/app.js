@@ -1,7 +1,6 @@
 import cors from "cors";
 import express from "express";
-import fs from "fs/promises";
-import { PORT, UPLOAD_DIR, validateEnvironment } from "./config/appConfig.js";
+import { PORT, validateEnvironment } from "./config/appConfig.js";
 import { connectDatabase } from "./config/db.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import adminRoutes from "./routes/adminRoutes.js";
@@ -11,7 +10,6 @@ import speechRoutes from "./routes/speechRoutes.js";
 
 validateEnvironment();
 await connectDatabase();
-await fs.mkdir(UPLOAD_DIR, { recursive: true });
 
 const app = express();
 

@@ -1,6 +1,8 @@
 import axios from "axios";
 import fs from "fs/promises";
+import os from "os";
 import path from "path";
+import { randomUUID } from "crypto";
 import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { Pinecone } from "@pinecone-database/pinecone";
@@ -8,9 +10,10 @@ import {
   EMBEDDING_DIMENSION,
   GEMINI_EMBEDDING_MODEL,
   GROQ_MODEL,
-  UPLOAD_DIR,
 } from "../config/appConfig.js";
 import { getLanguageConfig } from "../config/languages.js";
+import Document from "../models/Document.js";
+import { downloadPdfBuffer } from "./storageService.js";
 
 const pinecone = new Pinecone();
 const pineconeIndex = pinecone.Index(process.env.PINECONE_INDEX_NAME);
@@ -525,32 +528,19 @@ async function retrieveMatches(queryVector, topK = 5) {
   return searchResults.matches ?? [];
 }
 
-export async function listUploadedDocuments() {
-  const files = await fs.readdir(UPLOAD_DIR);
+export async function listUploadedDocuments(user) {
+  const filter = user?.role === "admin" ? {} : { ownerId: user?._id };
+  const documents = await Document.find(filter).sort({ createdAt: -1 }).lean();
 
-  const documents = await Promise.all(
-    files
-      .filter((fileName) => fileName.includes("__"))
-      .map(async (fileName) => {
-        const [docId, ...nameParts] = fileName.split("__");
-        const originalName = nameParts.join("__");
-        const filePath = path.join(UPLOAD_DIR, fileName);
-        const stats = await fs.stat(filePath);
-
-        return {
-          docId,
-          fileName: originalName,
-          uploadedAt: stats.mtime.toISOString(),
-          size: stats.size,
-        };
-      }),
-  );
-
-  return documents.sort(
-    (first, second) =>
-      new Date(second.uploadedAt).getTime() -
-      new Date(first.uploadedAt).getTime(),
-  );
+  return documents.map((document) => ({
+    docId: document.docId,
+    fileName: document.originalName,
+    uploadedAt: document.createdAt?.toISOString?.() || new Date().toISOString(),
+    size: document.size,
+    pages: document.pages || 0,
+    status: document.status,
+    storageKey: document.storageKey,
+  }));
 }
 
 export async function answerQuestion(question, history = [], language = "en") {
@@ -731,10 +721,22 @@ ${reviewContext}`,
   };
 }
 
-export async function findUploadedDocument(docId) {
-  const files = await fs.readdir(UPLOAD_DIR);
-  const fileName = files.find((file) => file.startsWith(`${docId}__`));
-  return fileName ? path.join(UPLOAD_DIR, fileName) : null;
+export async function findUploadedDocument(docId, user) {
+  const filter = { docId };
+
+  if (user?.role !== "admin") {
+    filter.ownerId = user?._id;
+  }
+
+  return Document.findOne(filter);
+}
+
+export async function deleteDocumentVectors(docId) {
+  await pineconeIndex.deleteMany({
+    filter: {
+      docId: { $eq: docId },
+    },
+  });
 }
 
 async function extractTextUsingOCR(filePath) {
@@ -783,87 +785,100 @@ async function extractTextUsingOCR(filePath) {
   return extractedText;
 }
 
-export async function processDocument(filePath, docId) {
-  const pdfLoader = new PDFLoader(filePath);
-  const rawDocs = await pdfLoader.load();
-  const readableDocs = rawDocs.filter(
-    (doc) =>
-      typeof doc.pageContent === "string" && doc.pageContent.trim().length > 0,
-  );
+export async function processDocument(document, sourceBuffer = null) {
+  const fileBuffer =
+    sourceBuffer && Buffer.isBuffer(sourceBuffer)
+      ? sourceBuffer
+      : await downloadPdfBuffer(document.storageKey);
+  const tempFilePath = path.join(os.tmpdir(), `${document.docId}-${randomUUID()}.pdf`);
 
-  const textSplitter = new RecursiveCharacterTextSplitter({
-    chunkSize: 1000,
-    chunkOverlap: 200,
-  });
+  await fs.writeFile(tempFilePath, fileBuffer);
 
-  let chunkedDocs;
-  let pageCount = readableDocs.length;
+  try {
+    const pdfLoader = new PDFLoader(tempFilePath);
+    const rawDocs = await pdfLoader.load();
+    const readableDocs = rawDocs.filter(
+      (doc) =>
+        typeof doc.pageContent === "string" && doc.pageContent.trim().length > 0,
+    );
 
-  // If no readable text found, try OCR for scanned PDFs
-  if (readableDocs.length === 0) {
-    console.log("No readable text found. Attempting OCR extraction...");
-    try {
-      const ocrText = await extractTextUsingOCR(filePath);
-      
-      // Create document from OCR text
-      const ocrDoc = {
-        pageContent: ocrText,
+    const textSplitter = new RecursiveCharacterTextSplitter({
+      chunkSize: 1000,
+      chunkOverlap: 200,
+    });
+
+    let chunkedDocs;
+    let pageCount = readableDocs.length;
+    let extractionMode = "text";
+
+    if (readableDocs.length === 0) {
+      console.log("No readable text found. Attempting OCR extraction...");
+      try {
+        const ocrText = await extractTextUsingOCR(tempFilePath);
+        extractionMode = "ocr";
+
+        const ocrDoc = {
+          pageContent: ocrText,
+          metadata: {
+            source: document.originalName,
+            loc: { pageNumber: 1 },
+          },
+        };
+
+        chunkedDocs = await textSplitter.splitDocuments([ocrDoc]);
+        pageCount = 1;
+      } catch (ocrError) {
+        throw new Error(
+          `The uploaded PDF does not contain readable text and OCR extraction failed: ${ocrError.message}. Please try a clearer PDF or a text-based PDF.`,
+        );
+      }
+    } else {
+      chunkedDocs = await textSplitter.splitDocuments(readableDocs);
+    }
+
+    const cleanedChunkedDocs = chunkedDocs.filter(
+      (doc) =>
+        typeof doc.pageContent === "string" && doc.pageContent.trim().length > 0,
+    );
+
+    if (cleanedChunkedDocs.length === 0) {
+      throw new Error("No readable content was found in this PDF.");
+    }
+
+    const chunkTexts = cleanedChunkedDocs.map((doc) => doc.pageContent.trim());
+    const vectors = await embedDocuments(chunkTexts);
+
+    const records = cleanedChunkedDocs
+      .map((doc, index) => ({
+        id: `${document.docId}-${doc.metadata.loc?.pageNumber ?? "page"}-${index}`,
+        values: vectors[index],
         metadata: {
-          source: path.basename(filePath),
-          loc: { pageNumber: 1 },
+          text: doc.pageContent.trim(),
+          source: document.originalName,
+          pageNumber: doc.metadata.loc?.pageNumber ?? null,
+          docId: document.docId,
         },
-      };
+      }))
+      .filter(
+        (record) => Array.isArray(record.values) && record.values.length > 0,
+      );
 
-      chunkedDocs = await textSplitter.splitDocuments([ocrDoc]);
-      pageCount = 1; // Treat OCR'd document as single page
-    } catch (ocrError) {
+    if (records.length === 0) {
       throw new Error(
-        `The uploaded PDF does not contain readable text and OCR extraction failed: ${ocrError.message}. Please try a clearer PDF or a text-based PDF.`,
+        "Embeddings could not be created from this PDF content. Check the PDF text and Gemini embedding API quota.",
       );
     }
-  } else {
-    chunkedDocs = await textSplitter.splitDocuments(readableDocs);
+
+    await pineconeIndex.upsert({
+      records,
+    });
+
+    return {
+      chunkCount: records.length,
+      pageCount,
+      extractionMode,
+    };
+  } finally {
+    await fs.rm(tempFilePath, { force: true });
   }
-
-  const cleanedChunkedDocs = chunkedDocs.filter(
-    (doc) =>
-      typeof doc.pageContent === "string" && doc.pageContent.trim().length > 0,
-  );
-
-  if (cleanedChunkedDocs.length === 0) {
-    throw new Error("No readable content was found in this PDF.");
-  }
-
-  const chunkTexts = cleanedChunkedDocs.map((doc) => doc.pageContent.trim());
-  const vectors = await embedDocuments(chunkTexts);
-
-  const records = cleanedChunkedDocs
-    .map((doc, index) => ({
-      id: `${docId}-${doc.metadata.loc?.pageNumber ?? "page"}-${index}`,
-      values: vectors[index],
-      metadata: {
-        text: doc.pageContent.trim(),
-        source: path.basename(filePath),
-        pageNumber: doc.metadata.loc?.pageNumber ?? null,
-        docId,
-      },
-    }))
-    .filter(
-      (record) => Array.isArray(record.values) && record.values.length > 0,
-    );
-
-  if (records.length === 0) {
-    throw new Error(
-      "Embeddings could not be created from this PDF content. Check the PDF text and Gemini embedding API quota.",
-    );
-  }
-
-  await pineconeIndex.upsert({
-    records,
-  });
-
-  return {
-    chunkCount: records.length,
-    pageCount,
-  };
 }

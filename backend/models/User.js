@@ -34,6 +34,12 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    documentIds: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Document",
+      },
+    ],
   },
   {
     timestamps: true,

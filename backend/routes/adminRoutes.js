@@ -1,6 +1,6 @@
 import express from "express";
-import upload from "../config/upload.js";
 import {
+  deleteUploadedDocument,
   downloadDocument,
   getUploadedDocuments,
   processUploadedDocument,
@@ -14,7 +14,15 @@ router.use(protect, adminOnly);
 
 router.get("/documents", getUploadedDocuments);
 router.get("/documents/:docId/download", downloadDocument);
-router.post("/upload", upload.single("file"), uploadDocument);
+router.delete("/documents/:docId", deleteUploadedDocument);
+router.post(
+  "/upload",
+  express.raw({
+    type: "application/pdf",
+    limit: "20mb",
+  }),
+  uploadDocument,
+);
 router.post("/process", processUploadedDocument);
 
 export default router;

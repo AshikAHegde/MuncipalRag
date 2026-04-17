@@ -16,7 +16,7 @@ Use this if `npm i` fails on another machine due to dependency resolution issues
 cd backend
 rm -rf node_modules package-lock.json
 npm cache clean --force
-npm install --legacy-peer-deps @google/generative-ai@0.24.1 @langchain/community@1.1.25 @langchain/core@1.1.36 @langchain/google-genai@2.1.26 @langchain/pinecone@1.0.1 @langchain/textsplitters@1.0.1 @pinecone-database/pinecone@7.1.0 axios@1.14.0 bcryptjs@3.0.3 cors@2.8.6 dotenv@17.3.1 express@5.2.1 jsonwebtoken@9.0.3 mongoose@9.3.3 multer@2.1.1 pdf-parse@1.1.4 readline-sync@1.4.10
+npm install --legacy-peer-deps @google/generative-ai@0.24.1 @langchain/community@1.1.25 @langchain/core@1.1.36 @langchain/google-genai@2.1.26 @langchain/pinecone@1.0.1 @langchain/textsplitters@1.0.1 @pinecone-database/pinecone@7.1.0 axios@1.14.0 bcryptjs@3.0.3 cloudinary@2.9.0 cors@2.8.6 dotenv@17.3.1 express@5.2.1 jsonwebtoken@9.0.3 mongoose@9.3.3 pdf-parse@1.1.4 readline-sync@1.4.10
 npm install -D nodemon@3.1.10
 ```
 
@@ -351,12 +351,12 @@ Common errors:
 
 Important note:
 - the admin routes exist under `/api/admin`
-- right now they are not protected by `protect` or `adminOnly` middleware
-- if you want, these can be locked later to admin-only access
+- these routes are protected by `protect` and `adminOnly` middleware
+- uploaded PDFs are stored in Cloudinary and tracked in MongoDB
 
 ### `GET /api/admin/documents`
 
-List uploaded PDF files from the `uploads` folder.
+List uploaded PDF files tracked in MongoDB.
 
 Success response:
 
@@ -375,7 +375,7 @@ Success response:
 ```
 
 Common errors:
-- `500` could not read uploads
+- `500` could not fetch uploaded documents
 
 ### `GET /api/admin/documents/:docId/download`
 
@@ -398,11 +398,11 @@ Upload a PDF file.
 Content type:
 
 ```txt
-multipart/form-data
+application/pdf
 ```
 
-Form field:
-- `file` as a PDF
+Required header:
+- `X-File-Name` with the original file name
 
 Success response:
 
@@ -412,14 +412,13 @@ Success response:
   "docId": "975c6d1b-1024-4e11-8067-7e4771c97101",
   "fileName": "m.pdf",
   "pages": 12,
-  "message": "PDF uploaded successfully."
+  "message": "PDF uploaded successfully to cloud storage."
 }
 ```
 
 Common errors:
-- `400` missing file
+- `400` missing file body
 - `400` non-PDF file
-- `400` multer validation error
 - `500` upload failed
 
 ### `POST /api/admin/process`
@@ -449,6 +448,34 @@ Common errors:
 - `400` missing `docId`
 - `404` uploaded PDF not found
 - `500` PDF processing or embedding failed
+
+### `DELETE /api/admin/documents/:docId`
+
+Delete an uploaded PDF everywhere.
+
+This removes:
+- the PDF asset from Cloudinary
+- the document chunks from Pinecone
+- the `Document` record from MongoDB
+- the document reference from the owning user's `documentIds` array
+
+Path param:
+- `docId` is the generated file UUID
+
+Success response:
+
+```json
+{
+  "success": true,
+  "message": "Document deleted from Cloudinary, Pinecone, and MongoDB.",
+  "docId": "975c6d1b-1024-4e11-8067-7e4771c97101"
+}
+```
+
+Common errors:
+- `400` missing `docId`
+- `404` uploaded PDF not found
+- `500` deletion failed
 
 ## Health
 

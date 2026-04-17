@@ -24,7 +24,6 @@ export const GROQ_MODEL = normalizeEnvModel(
   process.env.GROQ_MODEL,
   "llama-3.1-8b-instant",
 );
-export const UPLOAD_DIR = path.join(backendRoot, "uploads");
 export const GEMINI_TRANSCRIPTION_MODEL =
   normalizeEnvModel(
     process.env.GEMINI_TRANSCRIPTION_MODEL,
@@ -44,6 +43,9 @@ export function validateEnvironment() {
     "MONGODB_URI",
     "PINECONE_API_KEY",
     "PINECONE_INDEX_NAME",
+    "CLOUDINARY_CLOUD_NAME",
+    "CLOUDINARY_API_KEY",
+    "CLOUDINARY_API_SECRET",
   ];
   const missingVars = requiredVars.filter((key) => !process.env[key]);
 
