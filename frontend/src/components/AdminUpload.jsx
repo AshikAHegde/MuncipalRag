@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { AlertCircle, CheckCircle2, Download, File, Loader2, UploadCloud } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Download, File, Loader2, Trash2, UploadCloud } from 'lucide-react';
 import { cn } from '../lib/utils.js';
 import api from '../lib/api.js';
 import { useAuth } from '../hooks/useAuth.js';
@@ -12,6 +12,7 @@ const AdminUpload = () => {
   const [message, setMessage] = useState('');
   const [documents, setDocuments] = useState([]);
   const [isLoadingDocuments, setIsLoadingDocuments] = useState(true);
+  const [deletingDocId, setDeletingDocId] = useState('');
   const onDrop = useCallback((acceptedFiles) => {
     if (acceptedFiles?.length > 0) {
       setFile(acceptedFiles[0]);
@@ -49,36 +50,21 @@ const AdminUpload = () => {
 
     try {
       setStatus('uploading');
-      setMessage('Uploading PDF to the backend...');
+      setMessage('Uploading, checking, and indexing the PDF...');
 
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const uploadRes = await api.post('/api/admin/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+      const uploadRes = await api.post('/api/admin/upload', file, {
+        headers: {
+          'Content-Type': 'application/pdf',
+          'X-File-Name': encodeURIComponent(file.name),
+        },
       });
 
       if (!uploadRes.data.success) {
         throw new Error(uploadRes.data.error || 'Failed to upload document');
       }
 
-      setStatus('processing');
-      setMessage(
-        uploadRes.data.pages > 0
-          ? `Chunking and embedding ${uploadRes.data.pages} pages...`
-          : 'Chunking and embedding the uploaded PDF...',
-      );
-
-      const processRes = await api.post('/api/admin/process', {
-        docId: uploadRes.data.docId,
-      });
-
-      if (!processRes.data.success) {
-        throw new Error(processRes.data.error || 'Failed to process document');
-      }
-
       setStatus('success');
-      setMessage(processRes.data.message || 'Document processed and indexed successfully.');
+      setMessage(uploadRes.data.message || 'Document processed and indexed successfully.');
       setFile(null);
       await loadDocuments();
     } catch (err) {
@@ -109,8 +95,40 @@ const AdminUpload = () => {
     }
   };
 
+  const handleDelete = async (document) => {
+    const confirmed = window.confirm(
+      `Delete "${document.fileName}" from Cloudinary, Pinecone, and MongoDB?`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setDeletingDocId(document.docId);
+      setStatus('processing');
+      setMessage(`Deleting ${document.fileName} from all storage systems...`);
+
+      const response = await api.delete(`/api/admin/documents/${document.docId}`);
+
+      if (!response.data.success) {
+        throw new Error(response.data.error || 'Failed to delete document');
+      }
+
+      setStatus('success');
+      setMessage(response.data.message || 'Document deleted successfully.');
+      await loadDocuments();
+    } catch (deleteError) {
+      console.error(deleteError);
+      setStatus('error');
+      setMessage(deleteError.response?.data?.error || deleteError.message || 'Unable to delete the selected PDF.');
+    } finally {
+      setDeletingDocId('');
+    }
+  };
+
   return (
-    <section className="glass-panel w-full flex-1 rounded-[28px] p-3.5 shadow-[0_24px_64px_rgba(2,8,23,0.42)] sm:p-5">
+    <section className="glass-panel w-full self-start rounded-[28px] p-3.5 shadow-[0_24px_64px_rgba(2,8,23,0.42)] sm:p-5">
       <div className="mb-5 rounded-[24px] border border-slate-200/80 bg-white/65 p-4 dark:border-white/10 dark:bg-slate-950/40 sm:p-5">
         <p className="text-xs uppercase tracking-[0.28em] text-teal-700/75 dark:text-teal-200/75">Admin Workspace</p>
         <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
@@ -254,10 +272,8 @@ const AdminUpload = () => {
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {documents.map((document) => (
-              <button
+              <div
                 key={document.docId}
-                type="button"
-                onClick={() => handleDownload(document)}
                 className="flex min-h-11 items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left transition hover:border-teal-300 hover:bg-teal-50/40 dark:border-white/8 dark:bg-white/5 dark:hover:border-teal-200/35 dark:hover:bg-white/8"
               >
                 <div className="min-w-0 flex-1">
@@ -266,8 +282,30 @@ const AdminUpload = () => {
                     {(document.size / 1024 / 1024).toFixed(2)} MB
                   </p>
                 </div>
-                <Download size={16} className="shrink-0 text-slate-500 dark:text-slate-300" />
-              </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleDownload(document)}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition hover:border-teal-300 hover:text-teal-700 dark:border-white/10 dark:text-slate-300 dark:hover:border-teal-200/35 dark:hover:text-teal-200"
+                    aria-label={`Download ${document.fileName}`}
+                  >
+                    <Download size={16} className="shrink-0" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(document)}
+                    disabled={deletingDocId === document.docId}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-rose-200 text-rose-500 transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-400/20 dark:text-rose-300 dark:hover:border-rose-300/35 dark:hover:bg-rose-500/10"
+                    aria-label={`Delete ${document.fileName}`}
+                  >
+                    {deletingDocId === document.docId ? (
+                      <Loader2 size={16} className="animate-spin" />
+                    ) : (
+                      <Trash2 size={16} className="shrink-0" />
+                    )}
+                  </button>
+                </div>
+              </div>
             ))}
           </div>
         )}

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
@@ -20,6 +20,7 @@ const AppShell = ({ darkMode, onToggleDarkMode }) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const mainViewportRef = useRef(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
@@ -39,6 +40,12 @@ const AppShell = ({ darkMode, onToggleDarkMode }) => {
     logout();
     navigate('/login', { replace: true });
   };
+
+  useEffect(() => {
+    if (mainViewportRef.current) {
+      mainViewportRef.current.scrollTo({ top: 0, behavior: 'auto' });
+    }
+  }, [location.pathname]);
 
   const sidebarContent = (
     <>
@@ -149,7 +156,10 @@ const AppShell = ({ darkMode, onToggleDarkMode }) => {
           </div>
         </header>
 
-        <main className="flex flex-1 min-h-0 overflow-hidden p-4 md:p-6">
+        <main
+          ref={mainViewportRef}
+          className="flex flex-1 min-h-0 overflow-x-hidden overflow-y-auto p-4 md:p-6"
+        >
           <Outlet />
         </main>
       </div>
