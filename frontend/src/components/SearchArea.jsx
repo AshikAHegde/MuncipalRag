@@ -64,6 +64,12 @@ const SearchArea = () => {
   const mediaRecorderRef = useRef(null);
   const mediaStreamRef = useRef(null);
   const chunksRef = useRef([]);
+  const isDraggingRef = useRef(false);
+  const dragStartXRef = useRef(0);
+  const dragStartWidthRef = useRef(288);
+  const [sidebarWidth, setSidebarWidth] = useState(288); // 18rem
+  const MIN_SIDEBAR = 180;
+  const MAX_SIDEBAR = 480;
 
   const activeSession = chatSessions.find((session) => session.id === activeSessionId) || null;
   const activeMessages = activeSession?.conversations || [];
@@ -103,6 +109,26 @@ const SearchArea = () => {
         mediaStreamRef.current.getTracks().forEach((track) => track.stop());
         mediaStreamRef.current = null;
       }
+    };
+  }, []);
+
+  useEffect(() => {
+    const onMouseMove = (e) => {
+      if (!isDraggingRef.current) return;
+      const delta = e.clientX - dragStartXRef.current;
+      const nextWidth = Math.min(MAX_SIDEBAR, Math.max(MIN_SIDEBAR, dragStartWidthRef.current + delta));
+      setSidebarWidth(nextWidth);
+    };
+    const onMouseUp = () => {
+      isDraggingRef.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
     };
   }, []);
 
@@ -198,9 +224,9 @@ const SearchArea = () => {
       && (activeSession.language || DEFAULT_LANGUAGE) === selectedLanguage;
     const history = canAppendToActiveSession
       ? activeMessages.flatMap((message) => [
-          { role: 'user', text: message.question },
-          { role: 'model', text: message.answer },
-        ])
+        { role: 'user', text: message.question },
+        { role: 'model', text: message.answer },
+      ])
       : [];
 
     setLastSubmittedQuery(trimmedQuestion);
@@ -375,11 +401,10 @@ const SearchArea = () => {
                 setIsMobileHistoryOpen(false);
                 inputRef.current?.focus();
               }}
-              className={`w-full rounded-lg border px-3 py-3 text-left transition ${
-                session.id === activeSessionId
+              className={`w-full rounded-lg border px-3 py-3 text-left transition ${session.id === activeSessionId
                   ? 'border-[#83b9e7] bg-[#e8f3fb] dark:border-[#4f7391] dark:bg-[#1d3344]'
                   : 'premium-card hover:border-[#b9d8f2] hover:bg-moss-50 dark:hover:border-[#3c5c75] dark:hover:bg-[#1d3344]'
-              }`}
+                }`}
             >
               <div className="flex items-start justify-between gap-2">
                 <p className="min-w-0 flex-1 truncate text-sm font-semibold text-[#1a1a1a] dark:text-[#dce8f3]">
@@ -400,7 +425,11 @@ const SearchArea = () => {
 
   return (
     <section className="premium-surface flex h-full min-h-0 w-full flex-1 overflow-hidden rounded-xl dark:border-[#355269] dark:bg-[#1b2c3a]">
-      <aside className="hidden w-72 shrink-0 border-r border-[#e6e0d6] bg-cream-100 px-4 py-4 dark:border-[#355269] dark:bg-[#1b2c3a] lg:flex lg:flex-col">
+      {/* Resizable history sidebar */}
+      <aside
+        style={{ width: sidebarWidth }}
+        className="hidden shrink-0 border-r border-[#e6e0d6] bg-cream-100 px-4 py-4 dark:border-[#355269] dark:bg-[#1b2c3a] lg:flex lg:flex-col"
+      >
         <div className="mb-4">
           <p className="text-xs font-medium uppercase tracking-[0.08em] text-[#6b7280] dark:text-[#a9c3d8]">Operator</p>
           <p className="mt-1 text-sm font-semibold text-[#1a1a1a] dark:text-[#dce8f3]">{user?.fullName}</p>
@@ -417,6 +446,21 @@ const SearchArea = () => {
         </div>
         {historyList}
       </aside>
+
+      {/* Resize handle */}
+      <div
+        onMouseDown={(e) => {
+          isDraggingRef.current = true;
+          dragStartXRef.current = e.clientX;
+          dragStartWidthRef.current = sidebarWidth;
+          document.body.style.cursor = 'col-resize';
+          document.body.style.userSelect = 'none';
+        }}
+        className="group hidden w-1.5 shrink-0 cursor-col-resize items-center justify-center transition-colors hover:bg-moss-100 dark:hover:bg-[#26465d] lg:flex"
+        title="Drag to resize"
+      >
+        <div className="h-8 w-0.5 rounded-full bg-[#d8d1c5] opacity-0 transition-opacity group-hover:opacity-100 dark:bg-[#355269]" />
+      </div>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <header className="flex h-14 shrink-0 items-center justify-between border-b border-[#e6e0d6] bg-cream-50 px-4 dark:border-[#355269] dark:bg-[#1b2c3a]">
@@ -465,11 +509,10 @@ const SearchArea = () => {
             <button
               type="button"
               onClick={() => handleModeSwitch('general')}
-              className={`inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm transition ${
-                mode === 'general'
+              className={`inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm transition ${mode === 'general'
                   ? 'premium-btn-primary'
                   : 'premium-btn-secondary dark:text-[#a9c3d8] dark:hover:bg-[#1d3344]'
-              }`}
+                }`}
             >
               <MessageSquareText size={14} />
               {t.generalModeShort}
@@ -478,11 +521,10 @@ const SearchArea = () => {
               <button
                 type="button"
                 onClick={() => handleModeSwitch('lawyer')}
-                className={`inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm transition ${
-                  mode === 'lawyer'
+                className={`inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm transition ${mode === 'lawyer'
                     ? 'premium-btn-primary'
                     : 'premium-btn-secondary dark:text-[#a9c3d8] dark:hover:bg-[#1d3344]'
-                }`}
+                  }`}
               >
                 <Search size={14} />
                 {t.lawyerModeShort}
@@ -519,7 +561,7 @@ const SearchArea = () => {
             </div>
           )}
 
-          <div className="mx-auto max-w-3xl space-y-6">
+          <div className="w-full space-y-8">
             {activeMessages.map((message, index) => (
               <AnswerCard
                 key={message.id}
@@ -598,11 +640,10 @@ const SearchArea = () => {
                 type="button"
                 onClick={toggleVoiceInput}
                 disabled={!isSpeechSupported || isLoading || isTranscribing}
-                className={`inline-flex h-10 w-10 items-center justify-center rounded-lg border transition ${
-                  isRecording
+                className={`inline-flex h-10 w-10 items-center justify-center rounded-lg border transition ${isRecording
                     ? 'border-rose-300 bg-rose-50 text-rose-600 dark:border-rose-500/40 dark:bg-rose-500/15 dark:text-rose-300'
                     : 'border-[#cfdfec] bg-cream-50 text-[#6b7280] hover:bg-moss-50 dark:border-[#355269] dark:bg-[#1b2c3a] dark:text-[#a9c3d8] dark:hover:bg-[#1d3344]'
-                } disabled:opacity-50`}
+                  } disabled:opacity-50`}
                 aria-label={isRecording ? 'Stop recording' : 'Start voice input'}
               >
                 {isRecording ? <MicOff size={15} /> : <Mic size={15} />}

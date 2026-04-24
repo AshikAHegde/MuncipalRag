@@ -386,20 +386,20 @@ const AnswerCard = ({
 
   return (
     <div className="space-y-4">
-      {/* User bubble */}
+      {/* User bubble - Compact Anchor Right */}
       <div className="flex justify-end">
-        <div className="premium-pill max-w-[85%] rounded-2xl rounded-br-md px-4 py-3 text-sm dark:border-[#3c5c75] dark:bg-[#1d3344] dark:text-[#a9d6f7]">
-          <p className="whitespace-pre-wrap break-words">{question}</p>
+        <div className="max-w-[85%] rounded-xl rounded-tr-none bg-[#3b82f6] px-4 py-2.5 text-white shadow-md ring-1 ring-[#3b82f6]/20">
+          <p className="text-[14px] leading-relaxed whitespace-pre-wrap break-words">{question}</p>
         </div>
       </div>
 
-      {/* AI response bubble */}
-      <div className="flex items-start gap-3">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-moss-600 text-xs font-semibold text-white dark:bg-[#a9d6f7] dark:text-[#0f2434]">
-          AI
-        </div>
-
-        <div className="premium-card w-full max-w-[90%] rounded-2xl rounded-tl-md px-4 py-3 dark:border-[#355269] dark:bg-[#1b2c3a]">
+      {/* AI response bubble - Compact Anchor Left */}
+      <div className="flex flex-col items-start">
+        <div className="premium-card w-full max-w-5xl rounded-xl rounded-tl-none px-4 py-3.5 dark:border-[#355269] dark:bg-[#1b2c3a] shadow-xl relative overflow-hidden">
+          {/* Subtle AI Icon - Smaller */}
+          <div className="absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded-md bg-moss-600/10 text-[8px] font-black uppercase tracking-widest text-moss-700 dark:bg-[#a9d6f7]/10 dark:text-[#a9d6f7]">
+            AI
+          </div>
           {/* Header row */}
           <div className="mb-3 flex items-center justify-between">
             <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-[#6b7280] dark:text-[#a9c3d8]">

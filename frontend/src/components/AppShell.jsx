@@ -8,6 +8,7 @@ import {
   Menu,
   MessageSquareText,
   Moon,
+  PanelLeft,
   ShieldCheck,
   Sun,
   UserCircle2,
@@ -22,6 +23,7 @@ const AppShell = ({ darkMode, onToggleDarkMode }) => {
   const location = useLocation();
   const mainViewportRef = useRef(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isSidebarHidden, setIsSidebarHidden] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   const navItems = [
@@ -156,26 +158,29 @@ const AppShell = ({ darkMode, onToggleDarkMode }) => {
   return (
     <div className="flex h-screen overflow-hidden bg-cream-100 text-[#1a1a1a] dark:bg-[#0f1820] dark:text-[#dce8f3]">
       <aside
-        className={`hidden border-r border-[#ebe5dc] bg-cream-50 transition-[width] duration-200 dark:border-[#355269] dark:bg-[#1b2c3a] lg:flex lg:flex-col ${
-          isSidebarCollapsed ? 'w-20' : 'w-64'
+        className={`hidden border-r border-[#ebe5dc] bg-cream-50 transition-[width] duration-300 dark:border-[#355269] dark:bg-[#1b2c3a] lg:flex lg:flex-col overflow-hidden ${
+          isSidebarHidden ? 'w-0 border-r-0' : isSidebarCollapsed ? 'w-20' : 'w-64'
         }`}
       >
-        <div className="absolute left-full top-6 z-10 -ml-3">
-          <button
-            type="button"
-            onClick={() => setIsSidebarCollapsed((value) => !value)}
-            className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-[#e2ddd4] bg-cream-50 text-[#6b7280] shadow-sm transition hover:text-[#1a1a1a] dark:border-[#355269] dark:bg-[#1b2c3a] dark:text-[#a9c3d8] dark:hover:text-[#dce8f3]"
-            aria-label={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            {isSidebarCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
-          </button>
-        </div>
-        {sidebarContent}
+        {!isSidebarHidden && (
+          <div className="absolute left-full top-6 z-10 -ml-3">
+            <button
+              type="button"
+              onClick={() => setIsSidebarCollapsed((value) => !value)}
+              className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-[#e2ddd4] bg-cream-50 text-[#6b7280] shadow-sm transition hover:text-[#1a1a1a] dark:border-[#355269] dark:bg-[#1b2c3a] dark:text-[#a9c3d8] dark:hover:text-[#dce8f3]"
+              aria-label={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            >
+              {isSidebarCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+            </button>
+          </div>
+        )}
+        {!isSidebarHidden && sidebarContent}
       </aside>
 
       <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
         <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-[#ebe5dc] bg-cream-50/95 px-4 backdrop-blur md:px-6 dark:border-[#355269] dark:bg-[#1b2c3a]/90">
           <div className="flex items-center gap-3">
+            {/* Mobile hamburger */}
             <button
               type="button"
               onClick={() => setIsMobileSidebarOpen(true)}
@@ -183,6 +188,20 @@ const AppShell = ({ darkMode, onToggleDarkMode }) => {
               aria-label="Open navigation"
             >
               <Menu size={18} />
+            </button>
+            {/* Desktop sidebar hide/show toggle */}
+            <button
+              type="button"
+              onClick={() => setIsSidebarHidden((v) => !v)}
+              className={`hidden lg:inline-flex h-10 w-10 items-center justify-center rounded-lg border transition ${
+                isSidebarHidden
+                  ? 'border-[#a9d6f7]/40 bg-[#1d3344] text-[#a9d6f7]'
+                  : 'border-[#e2ddd4] text-[#6b7280] hover:bg-moss-100 hover:text-moss-700 dark:border-[#355269] dark:text-[#a9c3d8] dark:hover:bg-[#26465d] dark:hover:text-[#dce8f3]'
+              }`}
+              aria-label={isSidebarHidden ? 'Show sidebar' : 'Hide sidebar'}
+              title={isSidebarHidden ? 'Show sidebar' : 'Hide sidebar'}
+            >
+              <PanelLeft size={18} />
             </button>
             <div>
               <p className="text-xs font-medium uppercase tracking-[0.08em] text-[#6b7280] dark:text-[#a9c3d8]">Platform</p>
