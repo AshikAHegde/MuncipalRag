@@ -2,10 +2,20 @@ import React, { useEffect, useState } from 'react';
 import api from '../lib/api.js';
 import { AuthContext } from './auth-context.js';
 const TOKEN_KEY = 'muni-rag-token';
+const USER_KEY = 'muni-rag-user';
 
 export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(() => window.localStorage.getItem(TOKEN_KEY));
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => {
+    const savedUser = window.localStorage.getItem(USER_KEY);
+    if (!savedUser) return null;
+
+    try {
+      return JSON.parse(savedUser);
+    } catch {
+      return null;
+    }
+  });
   const [isLoading, setIsLoading] = useState(Boolean(window.localStorage.getItem(TOKEN_KEY)));
 
   useEffect(() => {
@@ -13,6 +23,7 @@ export const AuthProvider = ({ children }) => {
       setUser(null);
       setIsLoading(false);
       window.localStorage.removeItem(TOKEN_KEY);
+      window.localStorage.removeItem(USER_KEY);
       return;
     }
 
@@ -33,6 +44,7 @@ export const AuthProvider = ({ children }) => {
           setToken(null);
           setUser(null);
           window.localStorage.removeItem(TOKEN_KEY);
+          window.localStorage.removeItem(USER_KEY);
         }
       } finally {
         if (!isCancelled) {
@@ -50,6 +62,7 @@ export const AuthProvider = ({ children }) => {
 
   const saveSession = (nextToken, nextUser) => {
     window.localStorage.setItem(TOKEN_KEY, nextToken);
+    window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
     setToken(nextToken);
     setUser(nextUser);
   };
@@ -66,8 +79,17 @@ export const AuthProvider = ({ children }) => {
     return response.data;
   };
 
+  const updateProfile = async (payload) => {
+    const response = await api.put('/api/auth/profile', payload);
+    const nextUser = response.data.user;
+    window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
+    setUser(nextUser);
+    return response.data;
+  };
+
   const logout = () => {
     window.localStorage.removeItem(TOKEN_KEY);
+    window.localStorage.removeItem(USER_KEY);
     setToken(null);
     setUser(null);
   };
@@ -79,6 +101,7 @@ export const AuthProvider = ({ children }) => {
     isAuthenticated: Boolean(token && user),
     login,
     register,
+    updateProfile,
     logout,
   };
 

@@ -1,11 +1,229 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { BookOpen, Check, ChevronDown, ChevronUp, Copy, FileSpreadsheet, FileText, Loader2, Square, Volume2 } from 'lucide-react';
+import {
+  AlertTriangle,
+  BookOpen,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Copy,
+  FileSpreadsheet,
+  FileText,
+  Gavel,
+  Info,
+  Loader2,
+  Scale,
+  ShieldAlert,
+  Square,
+  Volume2,
+} from 'lucide-react';
 import api from '../lib/api.js';
 import { DEFAULT_LANGUAGE, getTranslation } from '../lib/i18n.js';
 
+// ─── Domain configuration (colours + labels) ───────────────────────────────
+const DOMAIN_CONFIG = {
+  criminal: {
+    label: 'Criminal',
+    badge: 'bg-rose-500/15 text-rose-400 border-rose-500/30',
+    accent: 'border-l-rose-500',
+    icon: ShieldAlert,
+    dot: 'bg-rose-500',
+    consequence: 'bg-rose-500/10 text-rose-300 border-rose-500/20',
+  },
+  civil: {
+    label: 'Civil',
+    badge: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
+    accent: 'border-l-amber-500',
+    icon: Scale,
+    dot: 'bg-amber-500',
+    consequence: 'bg-amber-500/10 text-amber-300 border-amber-500/20',
+  },
+  corporate: {
+    label: 'Corporate',
+    badge: 'bg-sky-500/15 text-sky-400 border-sky-500/30',
+    accent: 'border-l-sky-500',
+    icon: Gavel,
+    dot: 'bg-sky-500',
+    consequence: 'bg-sky-500/10 text-sky-300 border-sky-500/20',
+  },
+  tax: {
+    label: 'Tax',
+    badge: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
+    accent: 'border-l-emerald-500',
+    icon: AlertTriangle,
+    dot: 'bg-emerald-500',
+    consequence: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20',
+  },
+};
+
+const DEFAULT_DOMAIN_CONFIG = {
+  label: 'Legal',
+  badge: 'bg-slate-500/15 text-slate-400 border-slate-500/30',
+  accent: 'border-l-slate-500',
+  icon: Info,
+  dot: 'bg-slate-500',
+  consequence: 'bg-slate-500/10 text-slate-300 border-slate-500/20',
+};
+
+// ─── Single Issue Card ────────────────────────────────────────────────────────
+const IssueCard = ({ conflict, index }) => {
+  const domain = (conflict.domain || '').toLowerCase();
+  const config = DOMAIN_CONFIG[domain] || DEFAULT_DOMAIN_CONFIG;
+  const DomainIcon = config.icon;
+
+  const sectionLabel = conflict.section
+    || (conflict.section_number ? `Section ${conflict.section_number}` : 'Unknown Section');
+  const sectionName = conflict.section_name || '';
+
+  return (
+    <div
+      className={`group relative rounded-2xl border border-white/8 bg-white/4 border-l-4 ${config.accent} p-5 backdrop-blur-sm transition-all duration-200 hover:bg-white/6 hover:shadow-[0_8px_32px_rgba(0,0,0,0.3)]`}
+      style={{ animationDelay: `${index * 80}ms` }}
+    >
+      {/* Domain badge + section heading */}
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${config.badge}`}
+          >
+            <DomainIcon size={10} />
+            {config.label}
+          </span>
+          <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-500">
+            #{index + 1}
+          </span>
+        </div>
+        <div className={`h-2 w-2 rounded-full ${config.dot} mt-1 shrink-0 opacity-70`} />
+      </div>
+
+      <h3 className="mb-1 text-base font-bold leading-snug text-white">
+        {sectionLabel}
+      </h3>
+      {sectionName && (
+        <p className="mb-4 text-xs font-medium uppercase tracking-[0.08em] text-slate-400">
+          {sectionName}
+        </p>
+      )}
+
+      {/* 3 info rows */}
+      <div className="space-y-3">
+        {/* Issue Meaning */}
+        {conflict.issue_meaning && (
+          <div className="rounded-xl bg-white/4 px-4 py-3">
+            <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
+              What this means
+            </p>
+            <p className="text-sm leading-relaxed text-slate-200">
+              {conflict.issue_meaning}
+            </p>
+          </div>
+        )}
+
+        {/* Why Flagged */}
+        {conflict.why_flagged && (
+          <div className="rounded-xl bg-white/4 px-4 py-3">
+            <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
+              Why AI flagged this
+            </p>
+            <p className="text-sm leading-relaxed text-slate-200">
+              {conflict.why_flagged}
+            </p>
+          </div>
+        )}
+
+        {/* Consequence */}
+        {conflict.consequence && (
+          <div className={`rounded-xl border px-4 py-3 ${config.consequence}`}>
+            <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.14em] opacity-70">
+              Consequence
+            </p>
+            <p className="text-sm font-semibold leading-relaxed">
+              {conflict.consequence}
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ─── Conflicts grid header ────────────────────────────────────────────────────
+const ConflictsGrid = ({ conflicts, domain }) => {
+  const domainCounts = conflicts.reduce((acc, c) => {
+    const d = (c.domain || 'unknown').toLowerCase();
+    acc[d] = (acc[d] || 0) + 1;
+    return acc;
+  }, {});
+
+  return (
+    <div className="mt-3">
+      {/* Stats bar */}
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2 rounded-xl bg-white/5 px-3 py-1.5">
+          <ShieldAlert size={12} className="text-rose-400" />
+          <span className="text-xs font-semibold text-white">{conflicts.length} conflict{conflicts.length !== 1 ? 's' : ''} detected</span>
+        </div>
+        {Object.entries(domainCounts).map(([d, count]) => {
+          const cfg = DOMAIN_CONFIG[d] || DEFAULT_DOMAIN_CONFIG;
+          return (
+            <span
+              key={d}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] ${cfg.badge}`}
+            >
+              {count} {cfg.label}
+            </span>
+          );
+        })}
+      </div>
+
+      {/* Cards grid */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        {conflicts.map((conflict, index) => (
+          <IssueCard key={`${conflict.domain}-${conflict.section_number || index}`} conflict={conflict} index={index} />
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+const formatDetailValue = (value) => {
+  if (value == null) return '';
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => formatDetailValue(item)).filter(Boolean).join(' | ');
+  }
+  if (typeof value === 'object') {
+    const preferredKeys = ['title', 'fact', 'reason', 'section', 'note', 'source', 'explanation'];
+    const preferredValues = preferredKeys
+      .map((key) => value[key])
+      .filter((item) => item != null && item !== '')
+      .map((item) => formatDetailValue(item))
+      .filter(Boolean);
+
+    if (preferredValues.length > 0) {
+      return preferredValues.join(' - ');
+    }
+
+    return Object.entries(value)
+      .map(([key, item]) => `${key}: ${formatDetailValue(item)}`)
+      .join(' | ');
+  }
+  return '';
+};
+
+const getFileNameFromDisposition = (dispositionHeader, fallbackFileName) => {
+  if (!dispositionHeader) return fallbackFileName;
+  const fileNameMatch = dispositionHeader.match(/filename\*?=(?:UTF-8''|\")?([^\";\n]+)/i);
+  if (!fileNameMatch?.[1]) return fallbackFileName;
+  return decodeURIComponent(fileNameMatch[1]).replace(/\"/g, '').trim() || fallbackFileName;
+};
+
+// ─── Main AnswerCard component ────────────────────────────────────────────────
 const AnswerCard = ({
-  mode = 'chat',
+  mode = 'general',
   language = DEFAULT_LANGUAGE,
   question,
   answer,
@@ -27,6 +245,10 @@ const AnswerCard = ({
   const [exportError, setExportError] = useState('');
   const audioRef = useRef(null);
   const t = getTranslation(language);
+
+  // Conflicts from multi-domain parallel scan
+  const conflicts = Array.isArray(review?.conflicts) ? review.conflicts : [];
+  const hasConflicts = mode === 'lawyer' && conflicts.length > 0;
 
   useEffect(() => {
     if (!animateTyping) {
@@ -69,15 +291,6 @@ const AnswerCard = ({
     setTimeout(() => setCopied(false), 1500);
   };
 
-  const getFileNameFromDisposition = (dispositionHeader, fallbackFileName) => {
-    if (!dispositionHeader) return fallbackFileName;
-
-    const fileNameMatch = dispositionHeader.match(/filename\*?=(?:UTF-8''|\")?([^\";]+)/i);
-    if (!fileNameMatch?.[1]) return fallbackFileName;
-
-    return decodeURIComponent(fileNameMatch[1]).replace(/\"/g, '').trim() || fallbackFileName;
-  };
-
   const exportReport = async (format) => {
     if (!sessionId || !messageId) {
       setExportError(t.exportUnavailable);
@@ -95,11 +308,7 @@ const AnswerCard = ({
 
     try {
       const response = await api.get('/api/query/export', {
-        params: {
-          sessionId,
-          messageId,
-          format,
-        },
+        params: { sessionId, messageId, format },
         responseType: 'blob',
       });
 
@@ -166,25 +375,35 @@ const AnswerCard = ({
 
   const isNotAvailable =
     answer === 'Not available in rules'
-    || answer.trim() === t.missingAnswer;
+    || answer.trim() === t.missingAnswer
+    || answer.trim() === 'No sufficient retrieved legal basis found.';
+
+  const legalReport = mode === 'lawyer' ? review : null;
+  const summaryItems = Array.isArray(legalReport?.summary) ? legalReport.summary : (legalReport?.summary ? [legalReport.summary] : []);
+  const relevantLegalSections = Array.isArray(legalReport?.relevant_legal_sections) ? legalReport.relevant_legal_sections : [];
+  const validIssues = Array.isArray(legalReport?.final_result?.valid_issues) ? legalReport.final_result.valid_issues : [];
+  const notApplicableIssues = Array.isArray(legalReport?.final_result?.not_applicable) ? legalReport.final_result.not_applicable : [];
 
   return (
     <div className="space-y-4">
+      {/* User bubble */}
       <div className="flex justify-end">
         <div className="premium-pill max-w-[85%] rounded-2xl rounded-br-md px-4 py-3 text-sm dark:border-[#3c5c75] dark:bg-[#1d3344] dark:text-[#a9d6f7]">
           <p className="whitespace-pre-wrap break-words">{question}</p>
         </div>
       </div>
 
+      {/* AI response bubble */}
       <div className="flex items-start gap-3">
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-moss-600 text-xs font-semibold text-white dark:bg-[#a9d6f7] dark:text-[#0f2434]">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-moss-600 text-xs font-semibold text-white dark:bg-[#a9d6f7] dark:text-[#0f2434]">
           AI
         </div>
 
-        <div className="premium-card w-full max-w-[85%] rounded-2xl rounded-tl-md px-4 py-3 dark:border-[#355269] dark:bg-[#1b2c3a]">
-          <div className="mb-2 flex items-center justify-between">
+        <div className="premium-card w-full max-w-[90%] rounded-2xl rounded-tl-md px-4 py-3 dark:border-[#355269] dark:bg-[#1b2c3a]">
+          {/* Header row */}
+          <div className="mb-3 flex items-center justify-between">
             <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-[#6b7280] dark:text-[#a9c3d8]">
-              {mode === 'compliance_review' ? t.complianceReview : t.assistant}
+              {mode === 'lawyer' ? t.lawyerModeShort : t.generalModeShort}
             </div>
             <div className="flex items-center gap-1">
               <button
@@ -231,14 +450,125 @@ const AnswerCard = ({
             </div>
           </div>
 
-          <div className={`prose prose-sm max-w-none dark:prose-invert ${isNotAvailable ? 'text-[#6b7280] italic dark:text-[#a9c3d8]' : 'text-[#1a1a1a] dark:text-[#dce8f3]'}`}>
-            <ReactMarkdown>{displayedAnswer}</ReactMarkdown>
-            {isTyping && <span className="ml-1 inline-block h-4 w-1 animate-pulse bg-[#8ec3e8] dark:bg-[#62abdf]" />}
-          </div>
+          {/* ── LAWYER MODE: Conflict Cards ────────────────────────────────── */}
+          {hasConflicts ? (
+            <div>
+              {/* Summary text (brief) */}
+              {!isNotAvailable && (
+                <div className={`prose prose-sm max-w-none dark:prose-invert text-sm leading-relaxed ${isNotAvailable ? 'italic text-slate-500' : 'text-[#dce8f3]'}`}>
+                  <ReactMarkdown>{displayedAnswer}</ReactMarkdown>
+                  {isTyping && <span className="ml-1 inline-block h-4 w-1 animate-pulse bg-[#8ec3e8] dark:bg-[#62abdf]" />}
+                </div>
+              )}
+
+              {/* Divider + heading */}
+              <div className="mt-4 flex items-center gap-3 border-t border-white/8 pt-4">
+                <ShieldAlert size={14} className="shrink-0 text-rose-400" />
+                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">
+                  Conflict Report — All Domains Scanned
+                </p>
+              </div>
+
+              <ConflictsGrid conflicts={conflicts} domain={review?.domain} />
+
+              {/* Summary from legalReport */}
+              {summaryItems.length > 0 && !isTyping && (
+                <div className="mt-5 rounded-xl border border-white/8 bg-white/4 px-4 py-3">
+                  <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Summary</p>
+                  {summaryItems.map((item, index) => (
+                    <p key={index} className={`${index > 0 ? 'mt-2' : ''} text-sm leading-relaxed text-slate-200`}>
+                      {formatDetailValue(item)}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            /* ── GENERAL / LAWYER (no conflicts) — original view ──────────── */
+            <div>
+              <div className={`prose prose-sm max-w-none dark:prose-invert ${isNotAvailable ? 'text-[#6b7280] italic dark:text-[#a9c3d8]' : 'text-[#1a1a1a] dark:text-[#dce8f3]'}`}>
+                <ReactMarkdown>{displayedAnswer}</ReactMarkdown>
+                {isTyping && <span className="ml-1 inline-block h-4 w-1 animate-pulse bg-[#8ec3e8] dark:bg-[#62abdf]" />}
+              </div>
+
+              {!isTyping && legalReport && (
+                <div className="mt-4 space-y-3 border-t border-[#e6e0d6] pt-4 dark:border-[#355269]">
+                  {legalReport.domain && (
+                    <div className="rounded-lg border border-[#e6e0d6] bg-cream-100 px-3 py-2 text-xs uppercase tracking-[0.08em] text-[#6b7280] dark:border-[#355269] dark:bg-[#1d3344] dark:text-[#a9c3d8]">
+                      Domain: {legalReport.domain}
+                    </div>
+                  )}
+
+                  {summaryItems.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#6b7280] dark:text-[#a9c3d8]">Summary</p>
+                      <div className="mt-2 rounded-lg border border-[#e6e0d6] bg-cream-100 px-3 py-2 text-sm dark:border-[#355269] dark:bg-[#1d3344]">
+                        {summaryItems.map((item, index) => (
+                          <p key={`${formatDetailValue(item) || index}-summary`} className={`${index > 0 ? 'mt-2' : ''} text-[#1a1a1a] dark:text-[#dce8f3]`}>
+                            {formatDetailValue(item)}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {relevantLegalSections.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#6b7280] dark:text-[#a9c3d8]">Relevant legal sections</p>
+                      <div className="mt-2 space-y-2">
+                        {relevantLegalSections.map((item, index) => (
+                          <div key={`${formatDetailValue(item?.section) || index}-relevant`} className="rounded-lg border border-[#e6e0d6] bg-cream-100 px-3 py-3 text-sm dark:border-[#355269] dark:bg-[#1d3344]">
+                            <p className="font-medium text-[#1a1a1a] dark:text-[#dce8f3]">{formatDetailValue(item?.section) || `Section ${index + 1}`}</p>
+                            <div className="mt-2 space-y-2 text-xs text-[#6b7280] dark:text-[#a9c3d8]">
+                              <p><span className="font-semibold uppercase tracking-[0.06em]">Why Applicable:</span> {formatDetailValue(item?.why_applicable) || 'Insufficient data'}</p>
+                              <div>
+                                <p className="font-semibold uppercase tracking-[0.06em]">Key Match:</p>
+                                <ul className="mt-1 list-disc space-y-1 pl-5">
+                                  {(Array.isArray(item?.key_match) ? item.key_match : [item?.key_match]).filter(Boolean).map((match, matchIndex) => (
+                                    <li key={`${formatDetailValue(match) || matchIndex}-keymatch`}>{formatDetailValue(match)}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                              <p><span className="font-semibold uppercase tracking-[0.06em]">Action / Punishment:</span> {formatDetailValue(item?.action_or_punishment) || 'Depends on court judgment'}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {(validIssues.length > 0 || notApplicableIssues.length > 0) && (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#6b7280] dark:text-[#a9c3d8]">Final result</p>
+                      <div className="mt-2 grid gap-2 md:grid-cols-2">
+                        <div className="rounded-lg border border-[#e6e0d6] bg-cream-100 px-3 py-3 text-sm dark:border-[#355269] dark:bg-[#1d3344]">
+                          <p className="font-medium text-[#1a1a1a] dark:text-[#dce8f3]">Valid issues</p>
+                          <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-[#6b7280] dark:text-[#a9c3d8]">
+                            {(validIssues.length > 0 ? validIssues : ['Insufficient data']).map((item, index) => (
+                              <li key={`${formatDetailValue(item) || index}-valid`}>{formatDetailValue(item)}</li>
+                            ))}
+                          </ul>
+                        </div>
+                        <div className="rounded-lg border border-[#e6e0d6] bg-cream-100 px-3 py-3 text-sm dark:border-[#355269] dark:bg-[#1d3344]">
+                          <p className="font-medium text-[#1a1a1a] dark:text-[#dce8f3]">Not applicable</p>
+                          <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-[#6b7280] dark:text-[#a9c3d8]">
+                            {(notApplicableIssues.length > 0 ? notApplicableIssues : ['None clearly excluded']).map((item, index) => (
+                              <li key={`${formatDetailValue(item) || index}-notapplicable`}>{formatDetailValue(item)}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {audioError && <p className="mt-2 text-xs text-rose-600 dark:text-rose-400">{audioError}</p>}
           {exportError && <p className="mt-2 text-xs text-rose-600 dark:text-rose-400">{exportError}</p>}
 
+          {/* Sources */}
           {!isTyping && sources && sources.length > 0 && !isNotAvailable && (
             <div className="mt-4 border-t border-[#e6e0d6] pt-3 dark:border-[#355269]">
               <button

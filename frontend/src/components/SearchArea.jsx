@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  ClipboardCheck,
   History,
   Loader2,
   MessageSquareText,
@@ -16,18 +15,20 @@ import { DEFAULT_LANGUAGE, getTranslation, LANGUAGE_OPTIONS } from '../lib/i18n.
 import AnswerCard from './AnswerCard.jsx';
 import { useAuth } from '../hooks/useAuth.js';
 
+const normalizeMode = (mode) => (mode === 'lawyer' ? 'lawyer' : 'general');
+
 const normalizeChatSessions = (sessions = []) =>
   sessions.map((session, sessionIndex) => ({
     id: session.id || `chat-${sessionIndex + 1}`,
     title: session.title || `Chat ${sessionIndex + 1}`,
-    mode: session.mode || 'chat',
+    mode: normalizeMode(session.mode),
     language: session.language || DEFAULT_LANGUAGE,
     lastAskedAt: session.lastAskedAt || null,
     previewQuestion: session.previewQuestion || '',
     conversationCount: session.conversationCount || (session.conversations || []).length,
     conversations: (session.conversations || []).map((message, messageIndex) => ({
       id: message.id || `${message.askedAt || Date.now()}-${messageIndex}`,
-      mode: message.mode || 'chat',
+      mode: normalizeMode(message.mode),
       language: message.language || session.language || DEFAULT_LANGUAGE,
       question: message.question || '',
       answer: message.answer || '',
@@ -40,14 +41,14 @@ const normalizeChatSessions = (sessions = []) =>
 const SearchArea = () => {
   const { user } = useAuth();
   const [query, setQuery] = useState('');
-  const [mode, setMode] = useState('chat');
+  const [mode, setMode] = useState(user?.role === 'lawyer' ? 'lawyer' : 'general');
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [error, setError] = useState(null);
   const [chatSessions, setChatSessions] = useState([]);
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [lastSubmittedQuery, setLastSubmittedQuery] = useState('');
-  const [lastSubmittedMode, setLastSubmittedMode] = useState('chat');
+  const [lastSubmittedMode, setLastSubmittedMode] = useState(user?.role === 'lawyer' ? 'lawyer' : 'general');
   const [isMobileHistoryOpen, setIsMobileHistoryOpen] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState(() => {
     if (typeof window === 'undefined') return DEFAULT_LANGUAGE;
@@ -71,6 +72,12 @@ const SearchArea = () => {
   useEffect(() => {
     inputRef.current?.focus();
   }, [mode, activeSessionId]);
+
+  useEffect(() => {
+    if (user?.role !== 'lawyer' && mode === 'lawyer') {
+      setMode('general');
+    }
+  }, [mode, user?.role]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -119,7 +126,7 @@ const SearchArea = () => {
           );
 
           if (sessions.length > 0 && !activeSessionId) {
-            setMode(sessions[sessions.length - 1].mode || 'chat');
+            setMode(sessions[sessions.length - 1].mode || 'general');
           }
         }
       } catch (historyError) {
@@ -162,6 +169,11 @@ const SearchArea = () => {
     inputRef.current?.focus();
   };
 
+  const handleModeSwitch = (nextMode) => {
+    if (mode === nextMode) return;
+    startNewChat(nextMode);
+  };
+
   const upsertChatSession = (nextSession) => {
     setChatSessions((currentSessions) => {
       const existingIndex = currentSessions.findIndex((session) => session.id === nextSession.id);
@@ -182,7 +194,7 @@ const SearchArea = () => {
     const trimmedQuestion = questionToAsk.trim();
     const canAppendToActiveSession =
       activeSession
-      && (activeSession.mode || 'chat') === selectedMode
+      && (activeSession.mode || 'general') === selectedMode
       && (activeSession.language || DEFAULT_LANGUAGE) === selectedLanguage;
     const history = canAppendToActiveSession
       ? activeMessages.flatMap((message) => [
@@ -198,22 +210,13 @@ const SearchArea = () => {
       setIsLoading(true);
       setError(null);
 
-      const payload =
-        selectedMode === 'compliance_review'
-          ? {
-              mode: selectedMode,
-              submission: trimmedQuestion,
-              history,
-              language: selectedLanguage,
-              sessionId: canAppendToActiveSession ? activeSession.id : undefined,
-            }
-          : {
-              mode: selectedMode,
-              query: trimmedQuestion,
-              history,
-              language: selectedLanguage,
-              sessionId: canAppendToActiveSession ? activeSession.id : undefined,
-            };
+      const payload = {
+        mode: selectedMode,
+        query: trimmedQuestion,
+        history,
+        language: selectedLanguage,
+        sessionId: canAppendToActiveSession ? activeSession.id : undefined,
+      };
 
       const response = await api.post('/api/query', payload);
       if (!response.data.success) {
@@ -365,7 +368,7 @@ const SearchArea = () => {
               type="button"
               onClick={() => {
                 setActiveSessionId(session.id);
-                setMode(session.mode || 'chat');
+                setMode(session.mode || 'general');
                 setQuery('');
                 setError(null);
                 setLastSubmittedQuery('');
@@ -378,15 +381,15 @@ const SearchArea = () => {
                   : 'premium-card hover:border-[#b9d8f2] hover:bg-moss-50 dark:hover:border-[#3c5c75] dark:hover:bg-[#1d3344]'
               }`}
             >
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-semibold text-[#1a1a1a] dark:text-[#dce8f3]">
+              <div className="flex items-start justify-between gap-2">
+                <p className="min-w-0 flex-1 truncate text-sm font-semibold text-[#1a1a1a] dark:text-[#dce8f3]">
                   {session.title || `Chat ${index + 1}`}
                 </p>
-                <span className="text-[11px] uppercase tracking-[0.08em] text-[#6b7280] dark:text-[#a9c3d8]">
-                  {session.mode === 'compliance_review' ? t.reviewModeShort : t.chatModeShort}
+                <span className="shrink-0 text-[11px] uppercase tracking-[0.08em] text-[#6b7280] dark:text-[#a9c3d8]">
+                  {session.mode === 'lawyer' ? t.lawyerModeShort : t.generalModeShort}
                 </span>
               </div>
-              <p className="mt-2 line-clamp-2 text-xs text-[#6b7280] dark:text-[#a9c3d8]">
+              <p className="mt-2 line-clamp-2 text-xs leading-5 text-[#6b7280] dark:text-[#a9c3d8]">
                 {session.previewQuestion || t.noMessagesYet}
               </p>
             </button>
@@ -399,8 +402,18 @@ const SearchArea = () => {
     <section className="premium-surface flex h-full min-h-0 w-full flex-1 overflow-hidden rounded-xl dark:border-[#355269] dark:bg-[#1b2c3a]">
       <aside className="hidden w-72 shrink-0 border-r border-[#e6e0d6] bg-cream-100 px-4 py-4 dark:border-[#355269] dark:bg-[#1b2c3a] lg:flex lg:flex-col">
         <div className="mb-4">
-          <p className="text-xs font-medium uppercase tracking-[0.08em] text-[#6b7280] dark:text-[#a9c3d8]">{t.account}</p>
+          <p className="text-xs font-medium uppercase tracking-[0.08em] text-[#6b7280] dark:text-[#a9c3d8]">Operator</p>
           <p className="mt-1 text-sm font-semibold text-[#1a1a1a] dark:text-[#dce8f3]">{user?.fullName}</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <span className="rounded-full border border-[#d7d1c5] bg-cream-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#6b7280] dark:border-[#355269] dark:bg-[#1d3344] dark:text-[#a9c3d8]">
+              {user?.role}
+            </span>
+            {user?.domain && (
+              <span className="rounded-full border border-[#c5dff3] bg-[#e8f3fb] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-moss-700 dark:border-[#4f7391] dark:bg-[#1d3344] dark:text-[#a9d6f7]">
+                {user.domain}
+              </span>
+            )}
+          </div>
         </div>
         {historyList}
       </aside>
@@ -415,14 +428,14 @@ const SearchArea = () => {
             >
               <History size={15} />
             </button>
-            <div>
-              <h2 className="text-sm font-semibold text-[#1a1a1a] dark:text-[#dce8f3]">
+            <div className="min-w-0">
+              <h2 className="truncate text-sm font-semibold text-[#1a1a1a] dark:text-[#dce8f3]">
                 {activeSession?.title || t.newChat}
               </h2>
-              <p className="text-xs text-[#6b7280] dark:text-[#a9c3d8]">
+              <p className="truncate text-xs text-[#6b7280] dark:text-[#a9c3d8]">
                 {activeSession
-                  ? t.conversations(activeSession.conversationCount)
-                  : t.startConversationThread}
+                  ? `${activeSession.mode === 'lawyer' ? t.lawyerModeShort : t.generalModeShort} · ${t.conversations(activeSession.conversationCount)}`
+                  : 'General guidance or lawyer analysis'}
               </p>
             </div>
           </div>
@@ -443,7 +456,7 @@ const SearchArea = () => {
             </label>
             <button
               type="button"
-              onClick={() => startNewChat('chat')}
+              onClick={() => startNewChat(user?.role === 'lawyer' ? 'lawyer' : 'general')}
               className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#e2ddd4] px-3 text-sm text-[#6b7280] transition hover:bg-moss-50 dark:border-[#355269] dark:text-[#a9c3d8] dark:hover:bg-[#1d3344]"
             >
               <Plus size={14} />
@@ -451,28 +464,30 @@ const SearchArea = () => {
             </button>
             <button
               type="button"
-              onClick={() => setMode('chat')}
+              onClick={() => handleModeSwitch('general')}
               className={`inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm transition ${
-                mode === 'chat'
+                mode === 'general'
                   ? 'premium-btn-primary'
                   : 'premium-btn-secondary dark:text-[#a9c3d8] dark:hover:bg-[#1d3344]'
               }`}
             >
               <MessageSquareText size={14} />
-              {t.chatModeShort}
+              {t.generalModeShort}
             </button>
-            <button
-              type="button"
-              onClick={() => setMode('compliance_review')}
-              className={`inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm transition ${
-                mode === 'compliance_review'
-                  ? 'premium-btn-primary'
-                  : 'premium-btn-secondary dark:text-[#a9c3d8] dark:hover:bg-[#1d3344]'
-              }`}
-            >
-              <ClipboardCheck size={14} />
-              {t.reviewModeShort}
-            </button>
+            {user?.role === 'lawyer' && (
+              <button
+                type="button"
+                onClick={() => handleModeSwitch('lawyer')}
+                className={`inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm transition ${
+                  mode === 'lawyer'
+                    ? 'premium-btn-primary'
+                    : 'premium-btn-secondary dark:text-[#a9c3d8] dark:hover:bg-[#1d3344]'
+                }`}
+              >
+                <Search size={14} />
+                {t.lawyerModeShort}
+              </button>
+            )}
           </div>
         </header>
 
@@ -480,10 +495,12 @@ const SearchArea = () => {
           {activeMessages.length === 0 && !isLoading && !error && (
             <div className="premium-card mx-auto mt-8 max-w-xl rounded-xl p-6 text-center">
               <h3 className="text-lg font-semibold text-[#1a1a1a] dark:text-[#dce8f3]">
-                {activeSession ? t.welcomeExisting : t.welcomeNew}
+                {activeSession ? t.welcomeExisting : (mode === 'lawyer' ? 'Start a lawyer-mode analysis' : t.welcomeNew)}
               </h3>
               <p className="mt-2 text-sm text-[#6b7280] dark:text-[#a9c3d8]">
-                {t.welcomeBody}
+                {mode === 'lawyer'
+                  ? 'Paste a client report to trigger domain-filtered retrieval, legal comparison, and a structured issue report.'
+                  : 'Ask for a simple legal explanation. The orchestrator will infer the most relevant domain and retrieve only grounded legal text.'}
               </p>
             </div>
           )}
@@ -506,7 +523,7 @@ const SearchArea = () => {
             {activeMessages.map((message, index) => (
               <AnswerCard
                 key={message.id}
-                mode={message.mode || 'chat'}
+                mode={message.mode || 'general'}
                 question={message.question}
                 answer={message.answer}
                 sources={message.sources}
@@ -549,7 +566,7 @@ const SearchArea = () => {
               </label>
             </div>
             <div className="premium-input flex items-end gap-2 rounded-xl p-2 dark:bg-[#1b2c3a]">
-              {mode === 'compliance_review' ? (
+              {mode === 'lawyer' ? (
                 <textarea
                   ref={inputRef}
                   rows={3}
@@ -558,7 +575,7 @@ const SearchArea = () => {
                     setQuery(event.target.value);
                     setVoiceDraftNotice('');
                   }}
-                  placeholder={t.reviewPlaceholder}
+                  placeholder={t.lawyerPlaceholder}
                   disabled={isLoading}
                   className="max-h-44 min-h-20 flex-1 resize-y border-0 bg-transparent px-2 py-1 text-sm text-[#1a1a1a] outline-none placeholder:text-[#8a8f99] disabled:opacity-50 dark:text-[#dce8f3] dark:placeholder:text-[#95afc4]"
                 />
@@ -571,7 +588,7 @@ const SearchArea = () => {
                     setQuery(event.target.value);
                     setVoiceDraftNotice('');
                   }}
-                  placeholder={t.chatPlaceholder}
+                  placeholder={t.generalPlaceholder}
                   disabled={isLoading}
                   className="h-10 flex-1 border-0 bg-transparent px-2 text-sm text-[#1a1a1a] outline-none placeholder:text-[#8a8f99] disabled:opacity-50 dark:text-[#dce8f3] dark:placeholder:text-[#95afc4]"
                 />

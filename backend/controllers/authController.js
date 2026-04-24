@@ -2,10 +2,21 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 
-function createToken(userId) {
-  return jwt.sign({ userId }, process.env.JWT_SECRET, {
-    expiresIn: "7d",
-  });
+const VALID_DOMAINS = ["criminal", "civil", "corporate", "tax"];
+const VALID_ROLES = ["admin", "user", "lawyer"];
+
+function createToken(user) {
+  return jwt.sign(
+    {
+      userId: user._id.toString(),
+      role: user.role,
+      domain: user.domain || null,
+    },
+    process.env.JWT_SECRET,
+    {
+      expiresIn: "7d",
+    },
+  );
 }
 
 function sanitizeUser(user) {
@@ -14,6 +25,7 @@ function sanitizeUser(user) {
     fullName: user.fullName,
     email: user.email,
     role: user.role,
+    domain: user.domain || null,
     phone: user.phone,
     lastLoginAt: user.lastLoginAt,
     createdAt: user.createdAt,
@@ -28,7 +40,9 @@ export async function registerUser(req, res) {
     const password = req.body?.password;
     const phone = req.body?.phone?.trim() ?? "";
     const requestedRole = req.body?.role;
-    const role = requestedRole === "admin" ? "admin" : "user";
+    const requestedDomain = req.body?.domain?.trim()?.toLowerCase() ?? "";
+    const role = VALID_ROLES.includes(requestedRole) ? requestedRole : "user";
+    const domain = role === "lawyer" ? requestedDomain : null;
 
     if (!fullName || !email || !password) {
       return res.status(400).json({
@@ -41,6 +55,13 @@ export async function registerUser(req, res) {
       return res.status(400).json({
         success: false,
         error: "Password must be at least 6 characters long.",
+      });
+    }
+
+    if (role === "lawyer" && !VALID_DOMAINS.includes(domain)) {
+      return res.status(400).json({
+        success: false,
+        error: "A valid legal domain is required for lawyer accounts.",
       });
     }
 
@@ -60,9 +81,10 @@ export async function registerUser(req, res) {
       passwordHash,
       phone,
       role,
+      domain,
     });
 
-    const token = createToken(user._id.toString());
+    const token = createToken(user);
 
     return res.status(201).json({
       success: true,
@@ -111,7 +133,7 @@ export async function loginUser(req, res) {
     user.lastLoginAt = new Date();
     await user.save();
 
-    const token = createToken(user._id.toString());
+    const token = createToken(user);
 
     return res.json({
       success: true,
@@ -133,4 +155,48 @@ export async function getCurrentUser(req, res) {
     success: true,
     user: sanitizeUser(req.user),
   });
+}
+
+export async function updateProfile(req, res) {
+  try {
+    const fullName = req.body?.fullName?.trim();
+    const phone = req.body?.phone?.trim();
+    const domain = req.body?.domain?.trim()?.toLowerCase();
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: "User not found.",
+      });
+    }
+
+    if (fullName) user.fullName = fullName;
+    if (phone !== undefined) user.phone = phone;
+
+    if (user.role === "lawyer" && domain) {
+      if (VALID_DOMAINS.includes(domain)) {
+        user.domain = domain;
+      } else {
+        return res.status(400).json({
+          success: false,
+          error: "Invalid legal domain.",
+        });
+      }
+    }
+
+    await user.save();
+
+    return res.json({
+      success: true,
+      message: "Profile updated successfully.",
+      user: sanitizeUser(user),
+    });
+  } catch (error) {
+    console.error("Update profile failed:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || "Something went wrong while updating the profile.",
+    });
+  }
 }

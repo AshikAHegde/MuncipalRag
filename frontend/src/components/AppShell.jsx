@@ -26,14 +26,16 @@ const AppShell = ({ darkMode, onToggleDarkMode }) => {
 
   const navItems = [
     { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { to: '/chat', label: 'Chat', icon: MessageSquareText },
+    { to: '/chat', label: 'Legal AI', icon: MessageSquareText },
+    { to: '/profile', label: 'Profile', icon: UserCircle2 },
     ...(user?.role === 'admin' ? [{ to: '/admin', label: 'Admin', icon: ShieldCheck }] : []),
   ];
 
   const pageTitle = useMemo(() => {
-    if (location.pathname.startsWith('/chat')) return 'Chat Workspace';
-    if (location.pathname.startsWith('/admin')) return 'Admin Uploads';
-    return 'Dashboard';
+    if (location.pathname.startsWith('/chat')) return 'Legal AI Workspace';
+    if (location.pathname.startsWith('/admin')) return 'Law Library Admin';
+    if (location.pathname.startsWith('/profile')) return 'Account Profile';
+    return 'Legal Dashboard';
   }, [location.pathname]);
 
   const handleLogout = () => {
@@ -53,12 +55,12 @@ const AppShell = ({ darkMode, onToggleDarkMode }) => {
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-moss-600 text-white dark:bg-[#a9d6f7] dark:text-[#0f2434]">
           <FileText size={18} />
         </div>
-        {!isSidebarCollapsed && (
-          <div className="min-w-0">
-            <p className="truncate text-[11px] font-semibold uppercase tracking-[0.16em] text-[#6b7280] dark:text-[#a9c3d8]">MuniRules</p>
-            <p className="truncate text-base font-semibold text-[#1a1a1a] dark:text-[#f3e4db]">RAG Assistant</p>
-          </div>
-        )}
+          {!isSidebarCollapsed && (
+            <div className="min-w-0">
+              <p className="truncate text-[11px] font-semibold uppercase tracking-[0.16em] text-[#6b7280] dark:text-[#a9c3d8]">LegalFlow</p>
+              <p className="truncate text-base font-semibold text-[#1a1a1a] dark:text-[#f3e4db]">Lawyer Intelligence Suite</p>
+            </div>
+          )}
       </div>
 
       <nav className="flex-1 space-y-1 px-3 py-4">
@@ -90,20 +92,53 @@ const AppShell = ({ darkMode, onToggleDarkMode }) => {
           {!isSidebarCollapsed && (
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold text-[#1a1a1a] dark:text-[#f3e4db]">{user?.fullName}</p>
-              <p className="truncate text-xs uppercase tracking-[0.08em] text-[#6b7280] dark:text-[#a9c3d8]">{user?.role}</p>
+              <p className="truncate text-xs uppercase tracking-[0.08em] text-[#6b7280] dark:text-[#a9c3d8]">
+                {user?.domain ? `${user.role} · ${user.domain}` : user?.role}
+              </p>
             </div>
           )}
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Dark / Light mode toggle switch */}
           <button
             onClick={onToggleDarkMode}
-            className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-lg border border-[#e2ddd4] bg-cream-50 text-[#6b7280] transition hover:bg-moss-100 hover:text-moss-700 dark:border-[#355269] dark:bg-[#1b2c3a] dark:text-[#a9c3d8] dark:hover:bg-[#26465d] dark:hover:text-[#dce8f3]"
             aria-label="Toggle theme"
-            title="Toggle theme"
+            title={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+            className={`relative flex items-center rounded-full border transition-all duration-300 focus:outline-none ${
+              isSidebarCollapsed ? 'h-7 w-14' : 'h-8 w-[4.5rem]'
+            } ${
+              darkMode
+                ? 'border-[#4f7391] bg-[#1d3344]'
+                : 'border-[#c5dde8] bg-[#dbeefe]'
+            }`}
           >
-            {darkMode ? <Sun size={16} /> : <Moon size={16} />}
+            {/* sliding dot */}
+            <span
+              className={`absolute flex items-center justify-center rounded-full shadow-md transition-all duration-300 ${
+                isSidebarCollapsed ? 'h-5 w-5' : 'h-6 w-6'
+              } ${
+                darkMode
+                  ? 'left-[calc(100%-2px)] -translate-x-full bg-[#a9d6f7] text-[#0f2434]'
+                  : 'left-[2px] bg-white text-amber-500'
+              }`}
+            >
+              {darkMode ? <Moon size={11} /> : <Sun size={11} />}
+            </span>
+            {/* label */}
+            {!isSidebarCollapsed && (
+              <span
+                className={`absolute text-[9px] font-bold uppercase tracking-[0.12em] transition-all duration-300 ${
+                  darkMode
+                    ? 'left-2 text-[#a9c3d8]'
+                    : 'right-2 text-[#4a7fa5]'
+                }`}
+              >
+                {darkMode ? 'Dark' : 'Light'}
+              </span>
+            )}
           </button>
+
           {!isSidebarCollapsed && (
             <button
               onClick={handleLogout}
@@ -150,7 +185,7 @@ const AppShell = ({ darkMode, onToggleDarkMode }) => {
               <Menu size={18} />
             </button>
             <div>
-              <p className="text-xs font-medium uppercase tracking-[0.08em] text-[#6b7280] dark:text-[#a9c3d8]">Workspace</p>
+              <p className="text-xs font-medium uppercase tracking-[0.08em] text-[#6b7280] dark:text-[#a9c3d8]">Platform</p>
               <h1 className="text-base font-semibold text-[#1a1a1a] dark:text-[#dce8f3]">{pageTitle}</h1>
             </div>
           </div>

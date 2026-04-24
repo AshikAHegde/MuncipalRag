@@ -1,5 +1,7 @@
 import mongoose from "mongoose";
 
+const LEGAL_DOMAINS = ["criminal", "civil", "corporate", "tax"];
+
 const userSchema = new mongoose.Schema(
   {
     fullName: {
@@ -22,8 +24,16 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ["admin", "user"],
+      enum: ["admin", "user", "lawyer"],
       default: "user",
+    },
+    domain: {
+      type: String,
+      enum: LEGAL_DOMAINS,
+      default: null,
+      required: function requireDomainForLawyer() {
+        return this.role === "lawyer";
+      },
     },
     phone: {
       type: String,

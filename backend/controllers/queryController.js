@@ -1,15 +1,16 @@
-import {
-  analyzeSubmissionAgainstRules,
-  answerQuestion,
-} from "../services/ragService.js";
+import agentOrchestrator from "../services/agentOrchestrator.js";
 import { buildComplianceReport } from "../services/reportService.js";
 import { translateChatSessionsAtReadTime } from "../services/translationService.js";
 import UserChat from "../models/UserChat.js";
 
+function normalizeMode(mode) {
+  return mode === "lawyer" ? "lawyer" : "general";
+}
+
 function normalizeChatItem(chat, index = 0) {
   return {
     id: chat?._id?.toString?.() ?? `${chat?.askedAt || Date.now()}-${index}`,
-    mode: chat?.mode || "chat",
+    mode: normalizeMode(chat?.mode),
     language: chat?.language || "en",
     question: chat?.question || "",
     answer: chat?.answer || "",
@@ -34,7 +35,7 @@ function normalizeChatSession(session, index = 0) {
   return {
     id: session?._id?.toString?.() ?? `chat-${index + 1}`,
     title: session?.title?.trim() || `Chat ${index + 1}`,
-    mode: session?.mode || latestConversation?.mode || "chat",
+    mode: normalizeMode(session?.mode || latestConversation?.mode),
     language: session?.language || latestConversation?.language || "en",
     createdAt:
       session?.createdAt || conversations[0]?.askedAt || latestConversation?.askedAt || null,
@@ -65,7 +66,7 @@ async function migrateLegacyChats(userChat) {
   userChat.chatSessions = [
     {
       title: createChatSessionTitle(0),
-      mode: legacyChats[0]?.mode || "chat",
+      mode: normalizeMode(legacyChats[0]?.mode),
       conversations: legacyChats,
       createdAt: firstAskedAt,
       lastAskedAt,
@@ -80,32 +81,57 @@ async function migrateLegacyChats(userChat) {
 
 export async function queryKnowledgeBase(req, res) {
   try {
-    const mode = req.body?.mode?.trim() || "chat";
+    const mode = req.body?.mode?.trim() || "general";
     const language = req.preferredLanguage || "en";
     const query = req.body?.query?.trim();
-    const submission = req.body?.submission?.trim();
     const history = req.body?.history ?? [];
     const sessionId = req.body?.sessionId?.trim();
 
-    if (mode === "compliance_review" && !submission) {
+    if (!["lawyer", "general"].includes(mode)) {
       return res.status(400).json({
         success: false,
-        error: "submission is required when mode is compliance_review.",
+        error: "mode must be either lawyer or general.",
       });
     }
 
-    if (mode !== "compliance_review" && !query) {
+    if (!query) {
       return res.status(400).json({
         success: false,
-        error: "Query is required.",
+        error: "query is required.",
       });
     }
 
-    const result =
-      mode === "compliance_review"
-        ? await analyzeSubmissionAgainstRules(submission, history, language)
-        : await answerQuestion(query, history, language);
-    const userMessage = mode === "compliance_review" ? submission : query;
+    if (mode === "lawyer") {
+      if (!req.user) {
+        return res.status(401).json({
+          success: false,
+          error: "Authentication is required for lawyer mode.",
+        });
+      }
+
+      if (req.user.role !== "lawyer") {
+        return res.status(403).json({
+          success: false,
+          error: "Lawyer mode is available only to lawyer accounts.",
+        });
+      }
+
+      if (req.user.role === "lawyer" && !req.user.domain) {
+        return res.status(400).json({
+          success: false,
+          error: "Lawyer account is missing an assigned legal domain.",
+        });
+      }
+    }
+
+    const result = await agentOrchestrator.handleQuery({
+      query,
+      mode,
+      user: req.user,
+      history,
+      language,
+    });
+    const userMessage = query;
 
     const chatItem = {
       mode,
@@ -163,6 +189,8 @@ export async function queryKnowledgeBase(req, res) {
     return res.json({
       success: true,
       mode,
+      domain: result.domain ?? null,
+      status: result.status ?? "ok",
       language,
       answer: result.answer,
       sources: result.sources,

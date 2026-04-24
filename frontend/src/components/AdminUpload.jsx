@@ -8,11 +8,18 @@ import { useAuth } from '../hooks/useAuth.js';
 const AdminUpload = () => {
   const { user } = useAuth();
   const [file, setFile] = useState(null);
+  const [domain, setDomain] = useState('criminal');
   const [status, setStatus] = useState('idle');
   const [message, setMessage] = useState('');
   const [documents, setDocuments] = useState([]);
   const [isLoadingDocuments, setIsLoadingDocuments] = useState(true);
   const [deletingDocId, setDeletingDocId] = useState('');
+  const legalDomains = [
+    { label: 'Criminal', value: 'criminal' },
+    { label: 'Civil', value: 'civil' },
+    { label: 'Corporate', value: 'corporate' },
+    { label: 'Tax', value: 'tax' },
+  ];
   const onDrop = useCallback((acceptedFiles) => {
     if (acceptedFiles?.length > 0) {
       setFile(acceptedFiles[0]);
@@ -56,6 +63,7 @@ const AdminUpload = () => {
         headers: {
           'Content-Type': 'application/pdf',
           'X-File-Name': encodeURIComponent(file.name),
+          'X-Document-Domain': domain,
         },
       });
 
@@ -135,7 +143,7 @@ const AdminUpload = () => {
           <div className="min-w-0">
             <h2 className="text-xl font-semibold text-slate-900 dark:text-white sm:text-2xl">Document management</h2>
             <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
-              Signed in as {user?.fullName}. Only admin accounts can upload, process, and download indexed municipal PDFs.
+              Signed in as {user?.fullName}. Only admin accounts can upload, process, and download indexed legal PDFs.
             </p>
           </div>
           <div className="w-fit rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs uppercase tracking-[0.24em] text-slate-500 dark:border-white/8 dark:bg-white/5 dark:text-slate-400">
@@ -171,8 +179,35 @@ const AdminUpload = () => {
               <h3 className="mt-2 text-lg font-semibold text-slate-900 dark:text-white">Dropzone</h3>
             </div>
             <p className="max-w-md text-sm leading-6 text-slate-600 dark:text-slate-300">
-              Upload a clean text-based municipal PDF and the backend will process, chunk, and index it for the chatbot.
+              Upload a legal PDF, assign its domain metadata, and the backend will process, chunk, and index it for the legal AI system.
             </p>
+          </div>
+
+          <div className="mb-4">
+            <label className="block">
+              <span className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-200">Domain</span>
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                {legalDomains.map((option) => {
+                  const isActive = domain === option.value;
+
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setDomain(option.value)}
+                      className={cn(
+                        'rounded-[16px] border px-4 py-3 text-left text-sm font-semibold transition',
+                        isActive
+                          ? 'border-sky-300 bg-sky-100 text-slate-950 shadow-[0_10px_30px_rgba(96,165,250,0.16)] dark:border-sky-300/40 dark:bg-sky-400/15 dark:text-white'
+                          : 'border-slate-200 bg-white text-slate-700 hover:border-sky-200 hover:bg-sky-50 dark:border-white/10 dark:bg-white/6 dark:text-slate-200 dark:hover:border-sky-200/30 dark:hover:bg-white/10',
+                      )}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </label>
           </div>
 
           <div
@@ -211,7 +246,7 @@ const AdminUpload = () => {
               {[
                 'Upload the PDF from the admin panel',
                 'Backend extracts text and creates chunks',
-                'Embeddings are stored in Pinecone for retrieval',
+                'Embeddings are stored in Pinecone with legal metadata for domain-based retrieval',
               ].map((step, index) => (
                 <div key={step} className="flex h-full items-start gap-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 dark:border-white/8 dark:bg-white/5">
                   <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-900 text-sm font-semibold text-white dark:bg-white dark:text-slate-950">
@@ -279,7 +314,7 @@ const AdminUpload = () => {
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-slate-900 dark:text-white">{document.fileName}</p>
                   <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-                    {(document.size / 1024 / 1024).toFixed(2)} MB
+                    {document.domain} · {(document.size / 1024 / 1024).toFixed(2)} MB
                   </p>
                 </div>
                 <div className="flex items-center gap-2">

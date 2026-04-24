@@ -32,6 +32,15 @@ function sanitizeOriginalName(headerValue) {
     : `${normalizedName}.pdf`;
 }
 
+const VALID_DOMAINS = ["criminal", "civil", "corporate", "tax"];
+
+function parseKeywordHeader(value) {
+  return decodeURIComponent(String(value || ""))
+    .split(",")
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+}
+
 export async function getUploadedDocuments(req, res) {
   try {
     const documents = await listUploadedDocuments(req.user);
@@ -101,6 +110,13 @@ export async function uploadDocument(req, res) {
   try {
     const mimeType = req.headers["content-type"] || "";
     const originalName = sanitizeOriginalName(req.headers["x-file-name"]);
+    const domain = String(req.headers["x-document-domain"] || "")
+      .trim()
+      .toLowerCase();
+    const section = decodeURIComponent(
+      String(req.headers["x-document-section"] || ""),
+    ).trim();
+    const keywords = parseKeywordHeader(req.headers["x-document-keywords"]);
     const fileBuffer = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
 
     if (!fileBuffer.length) {
@@ -114,6 +130,13 @@ export async function uploadDocument(req, res) {
       return res.status(400).json({
         success: false,
         error: "Only PDF files are allowed.",
+      });
+    }
+
+    if (!VALID_DOMAINS.includes(domain)) {
+      return res.status(400).json({
+        success: false,
+        error: "A valid legal domain is required for uploaded documents.",
       });
     }
 
@@ -135,6 +158,9 @@ export async function uploadDocument(req, res) {
       docId: randomUUID(),
       ownerId: req.user._id,
       originalName,
+      domain,
+      section,
+      keywords,
       mimeType,
       size: fileBuffer.length,
       storageKey,

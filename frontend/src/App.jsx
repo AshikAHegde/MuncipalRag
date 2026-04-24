@@ -6,6 +6,7 @@ import { AuthProvider } from './context/AuthContext.jsx';
 import AdminPage from './pages/AdminPage.jsx';
 import DashboardPage from './pages/DashboardPage.jsx';
 import LoginPage from './pages/LoginPage.jsx';
+import ProfilePage from './pages/ProfilePage.jsx';
 import SearchPage from './pages/SearchPage.jsx';
 import SignupPage from './pages/SignupPage.jsx';
 
@@ -33,6 +34,7 @@ function App() {
               <Route index element={<Navigate to="/dashboard" replace />} />
               <Route path="dashboard" element={<DashboardPage />} />
               <Route path="chat" element={<SearchPage />} />
+              <Route path="profile" element={<ProfilePage />} />
               <Route path="admin" element={<ProtectedRoute requireAdmin />}>
                 <Route index element={<AdminPage />} />
               </Route>

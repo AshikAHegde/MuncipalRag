@@ -111,6 +111,10 @@ function safeJsonParse(text) {
   }
 }
 
+export function parseStructuredJson(text) {
+  return safeJsonParse(text);
+}
+
 function chunkArray(items, size) {
   const chunks = [];
 
@@ -320,11 +324,19 @@ function buildFallbackAnswer(context, rewrittenQuery, language = "en") {
 function normalizeMatch(match, index) {
   return {
     page: match.metadata?.pageNumber ?? "N/A",
-    section: `Match ${index + 1}`,
+    section: match.metadata?.section || `Match ${index + 1}`,
     text: match.metadata?.text ?? "",
     score: match.score ?? null,
     source: match.metadata?.source ?? "",
+    domain: match.metadata?.domain ?? "",
+    keywords: Array.isArray(match.metadata?.keywords)
+      ? match.metadata.keywords
+      : [],
   };
+}
+
+export function normalizeRetrievedMatch(match, index) {
+  return normalizeMatch(match, index);
 }
 
 function formatComplianceReview(review, language = "en") {
@@ -528,6 +540,46 @@ async function retrieveMatches(queryVector, topK = 5) {
   return searchResults.matches ?? [];
 }
 
+export async function searchLegalMatches({
+  query,
+  history = [],
+  topK = 5,
+  domain,
+}) {
+  const rewrittenQuery = await rewriteQuery(query, history);
+  const queryVector = await embedQuery(rewrittenQuery);
+
+  if (!Array.isArray(queryVector) || queryVector.length === 0) {
+    throw new Error("Embedding generation failed for the search query.");
+  }
+
+  const searchResults = await pineconeIndex.query({
+    topK,
+    vector: queryVector,
+    includeMetadata: true,
+    ...(domain
+      ? {
+          filter: {
+            domain: { $eq: domain },
+          },
+        }
+      : {}),
+  });
+
+  return {
+    rewrittenQuery,
+    matches: searchResults.matches ?? [],
+  };
+}
+
+export async function runGroundedGroqPrompt({
+  systemInstruction,
+  prompt,
+  history = [],
+}) {
+  return generateGroqText(systemInstruction, history, prompt);
+}
+
 export async function listUploadedDocuments(user) {
   const filter = user?.role === "admin" ? {} : { ownerId: user?._id };
   const documents = await Document.find(filter).sort({ createdAt: -1 }).lean();
@@ -539,6 +591,9 @@ export async function listUploadedDocuments(user) {
     size: document.size,
     pages: document.pages || 0,
     status: document.status,
+    domain: document.domain,
+    section: document.section || "",
+    keywords: Array.isArray(document.keywords) ? document.keywords : [],
     storageKey: document.storageKey,
   }));
 }
@@ -857,6 +912,9 @@ export async function processDocument(document, sourceBuffer = null) {
           source: document.originalName,
           pageNumber: doc.metadata.loc?.pageNumber ?? null,
           docId: document.docId,
+          domain: document.domain,
+          section: document.section || "",
+          keywords: Array.isArray(document.keywords) ? document.keywords : [],
         },
       }))
       .filter(

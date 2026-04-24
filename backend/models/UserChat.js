@@ -34,8 +34,8 @@ const chatItemSchema = new mongoose.Schema(
   {
     mode: {
       type: String,
-      enum: ["chat", "compliance_review"],
-      default: "chat",
+      enum: ["chat", "compliance_review", "general", "lawyer"],
+      default: "general",
       trim: true,
     },
     question: {
@@ -79,8 +79,8 @@ const chatSessionSchema = new mongoose.Schema(
     },
     mode: {
       type: String,
-      enum: ["chat", "compliance_review"],
-      default: "chat",
+      enum: ["chat", "compliance_review", "general", "lawyer"],
+      default: "general",
       trim: true,
     },
     language: {

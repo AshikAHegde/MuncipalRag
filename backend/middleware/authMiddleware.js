@@ -23,6 +23,15 @@ export async function protect(req, res, next) {
       });
     }
 
+    if (
+      decoded.role
+      && decoded.role === user.role
+      && (decoded.domain ?? null) === (user.domain ?? null)
+    ) {
+      user.role = decoded.role;
+      user.domain = decoded.domain ?? null;
+    }
+
     req.user = user;
     return next();
   } catch (_error) {

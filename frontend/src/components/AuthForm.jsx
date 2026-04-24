@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
-import { ArrowRight, LockKeyhole, Mail, Phone, User2 } from 'lucide-react';
+import { ArrowRight, BriefcaseBusiness, LockKeyhole, Mail, Phone, Scale, User2 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth.js';
 
 const copyMap = {
   login: {
     eyebrow: 'Welcome Back',
-    title: 'Login to your civic knowledge workspace',
-    subtitle: 'Access the chat assistant, your saved conversation history, and admin tools according to your account role.',
+    title: 'Login to your legal AI workspace',
+    subtitle: 'Access the legal assistant, saved conversation history, and admin tools according to your account role.',
     cta: 'Login',
     alternateLabel: "Don't have an account?",
     alternateLink: '/signup',
@@ -15,8 +15,8 @@ const copyMap = {
   },
   signup: {
     eyebrow: 'Create Account',
-    title: 'Sign up for your RAG portal',
-    subtitle: 'Create either a user or admin account, start asking questions, and keep chat history linked to your profile.',
+    title: 'Sign up for your legal AI portal',
+    subtitle: 'Create a user, lawyer, or admin account and keep legal conversations linked to your profile.',
     cta: 'Create account',
     alternateLabel: 'Already have an account?',
     alternateLink: '/login',
@@ -26,8 +26,15 @@ const copyMap = {
 
 const initialForms = {
   login: { email: '', password: '' },
-  signup: { fullName: '', email: '', phone: '', password: '', role: 'user' },
+  signup: { fullName: '', email: '', phone: '', password: '', role: 'user', domain: '' },
 };
+
+const LEGAL_DOMAINS = [
+  { label: 'Criminal', value: 'criminal' },
+  { label: 'Civil', value: 'civil' },
+  { label: 'Corporate', value: 'corporate' },
+  { label: 'Tax', value: 'tax' },
+];
 
 const AuthForm = ({ mode }) => {
   const [formData, setFormData] = useState(initialForms[mode]);
@@ -39,7 +46,11 @@ const AuthForm = ({ mode }) => {
 
   const handleChange = (event) => {
     const { name, value } = event.target;
-    setFormData((current) => ({ ...current, [name]: value }));
+    setFormData((current) => ({
+      ...current,
+      [name]: value,
+      ...(name === 'role' && value !== 'lawyer' ? { domain: '' } : {}),
+    }));
   };
 
   const handleSubmit = async (event) => {
@@ -81,8 +92,8 @@ const AuthForm = ({ mode }) => {
           <div className="mt-6 grid gap-3 sm:grid-cols-3">
             {[
               { label: 'Secure access', value: 'JWT login with protected routes' },
-              { label: 'Role aware', value: 'User and admin accounts each get the right tools' },
-              { label: 'Saved chats', value: 'Each user sees only their own history' },
+              { label: 'Role aware', value: 'User, lawyer, and admin accounts each get the right tools' },
+              { label: 'Domain aware', value: 'Lawyer accounts route legal analysis through their selected domain' },
             ].map((item) => (
               <div key={item.label} className="rounded-[18px] border border-slate-200/80 bg-white/70 p-3 dark:border-white/10 dark:bg-white/6">
                 <p className="text-xs uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">{item.label}</p>
@@ -149,7 +160,8 @@ const AuthForm = ({ mode }) => {
                   <span className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-200">Account type</span>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     {[
-                      { label: 'User', value: 'user', helper: 'Chat and history access' },
+                      { label: 'User', value: 'user', helper: 'General legal Q&A and history access' },
+                      { label: 'Lawyer', value: 'lawyer', helper: 'Structured legal reports bound to one legal domain' },
                       { label: 'Admin', value: 'admin', helper: 'Includes upload and indexing tools' },
                     ].map((option) => {
                       const isActive = formData.role === option.value;
@@ -165,11 +177,37 @@ const AuthForm = ({ mode }) => {
                               : 'border-slate-200 bg-white text-slate-700 hover:border-teal-200 dark:border-white/10 dark:bg-white/6 dark:text-slate-200'
                           }`}
                         >
-                          <p className="text-sm font-semibold">{option.label}</p>
+                          <div className="flex items-center gap-2">
+                            {option.value === 'lawyer' ? <Scale size={16} /> : option.value === 'admin' ? <BriefcaseBusiness size={16} /> : <User2 size={16} />}
+                            <p className="text-sm font-semibold">{option.label}</p>
+                          </div>
                           <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">{option.helper}</p>
                         </button>
                       );
                     })}
+                  </div>
+                </label>
+              )}
+
+              {mode === 'signup' && formData.role === 'lawyer' && (
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-200">Lawyer domain</span>
+                  <div className="flex items-center gap-3 rounded-[16px] border border-slate-200 bg-white px-4 py-2.5 dark:border-white/10 dark:bg-white/6">
+                    <Scale size={17} className="text-slate-400" />
+                    <select
+                      name="domain"
+                      value={formData.domain}
+                      onChange={handleChange}
+                      required
+                      className="w-full bg-transparent outline-none"
+                    >
+                      <option value="">Select legal domain</option>
+                      {LEGAL_DOMAINS.map((option) => (
+                        <option key={option.value} value={option.value} className="text-black">
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </label>
               )}

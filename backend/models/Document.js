@@ -1,5 +1,7 @@
 import mongoose from "mongoose";
 
+const LEGAL_DOMAINS = ["criminal", "civil", "corporate", "tax"];
+
 const documentSchema = new mongoose.Schema(
   {
     docId: {
@@ -19,6 +21,21 @@ const documentSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
+    },
+    domain: {
+      type: String,
+      enum: LEGAL_DOMAINS,
+      required: true,
+      index: true,
+    },
+    section: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    keywords: {
+      type: [String],
+      default: [],
     },
     mimeType: {
       type: String,
