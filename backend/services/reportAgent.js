@@ -441,14 +441,34 @@ ${JSON.stringify(domainAnalysis, null, 2)}`,
     domain,
   };
 
+  // Supplement sections with items from conflicts if sections are lacking
+  const rawSections = toList(report.sections);
+  if (rawSections.length === 0 && conflicts.length > 0) {
+    conflicts.slice(0, 3).forEach(c => {
+      rawSections.push({
+        section: c.section,
+        description: c.issue_meaning || buildDescription(c),
+        why_applicable: c.why_flagged || "Detected across domain scan.",
+        result: c.consequence || getPunishment(c.section),
+        key_match: [c.domain]
+      });
+    });
+  }
+
   const finalSections = normalizeFinalSections({
-    sections: toList(report.sections),
+    sections: rawSections,
     fallbackSections: fallback.sections,
     query,
     facts: fallback.facts,
   });
   const sectionsToRender = finalSections.length > 0 ? finalSections : fallback.sections;
-  const finalSummary = textValue(report.summary) || fallback.summary;
+
+  // Use conflicts to improve summary if needed
+  let finalSummary = textValue(report.summary) || fallback.summary;
+  if ((!finalSummary || finalSummary.includes("Insufficient data")) && conflicts.length > 0) {
+    const conflictDomains = [...new Set(conflicts.map(c => c.domain))];
+    finalSummary = `An audit of ${conflictDomains.join(", ")} legal domains identified ${conflicts.length} potential issues. The following sections were flagged as most relevant to the reported facts.`;
+  }
   const summaryLines = buildSummaryLines(finalSummary, sectionsToRender);
 
   const answerLines = [];
