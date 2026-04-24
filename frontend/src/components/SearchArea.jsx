@@ -513,9 +513,10 @@ const SearchArea = () => {
                   ? 'premium-btn-primary'
                   : 'premium-btn-secondary dark:text-[#a9c3d8] dark:hover:bg-[#1d3344]'
                 }`}
+              title={t.generalModeShort}
             >
               <MessageSquareText size={14} />
-              {t.generalModeShort}
+              <span className="hidden sm:inline">{t.generalModeShort}</span>
             </button>
             {user?.role === 'lawyer' && (
               <button
@@ -525,9 +526,10 @@ const SearchArea = () => {
                     ? 'premium-btn-primary'
                     : 'premium-btn-secondary dark:text-[#a9c3d8] dark:hover:bg-[#1d3344]'
                   }`}
+                title={t.lawyerModeShort}
               >
                 <Search size={14} />
-                {t.lawyerModeShort}
+                <span className="hidden sm:inline">{t.lawyerModeShort}</span>
               </button>
             )}
           </div>

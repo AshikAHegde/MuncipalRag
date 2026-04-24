@@ -63,39 +63,49 @@ export async function uploadPdfToCloud(fileBuffer, originalName) {
 }
 
 export async function downloadPdfBuffer(storageKey) {
-  // Try raw first (new uploads), fallback to image (older uploads stored with resource_type auto)
-  const urls = [buildPdfDeliveryUrl(storageKey, "raw"), buildPdfDeliveryUrl(storageKey, "image")];
-  for (const url of urls) {
-    try {
-      const response = await axios.get(url, { responseType: "arraybuffer" });
-      return Buffer.from(response.data);
-    } catch (err) {
-      if (err.response?.status !== 404) throw err;
-    }
-  }
-  throw new Error(`Could not download PDF from Cloudinary for key: ${storageKey}`);
+  const { url } = await getCloudinaryResource(storageKey);
+  const response = await axios.get(url, { responseType: "arraybuffer" });
+  return Buffer.from(response.data);
 }
 
 export async function streamPdfFromCloud(storageKey, _originalName) {
-  // Try raw first (new uploads), fallback to image (older uploads stored with resource_type auto)
-  const urls = [buildPdfDeliveryUrl(storageKey, "raw"), buildPdfDeliveryUrl(storageKey, "image")];
-  let lastError;
-  for (const url of urls) {
+  const { url, contentType } = await getCloudinaryResource(storageKey);
+  const response = await axios({ url, method: "GET", responseType: "stream" });
+  const body = new PassThrough();
+  response.data.pipe(body);
+  return {
+    body,
+    contentLength: Number(response.headers["content-length"] || 0) || null,
+    contentType: contentType || response.headers["content-type"] || "application/pdf",
+  };
+}
+
+async function getCloudinaryResource(storageKey) {
+  const tryGet = async (resType) => {
     try {
-      const response = await axios({ url, method: "GET", responseType: "stream" });
-      const body = new PassThrough();
-      response.data.pipe(body);
-      return {
-        body,
-        contentLength: Number(response.headers["content-length"] || 0) || null,
-        contentType: response.headers["content-type"] || "application/pdf",
-      };
+      const resource = await cloudinary.api.resource(storageKey, { resource_type: resType });
+      // Use specialized private_download_url utility
+      const signedUrl = cloudinary.utils.private_download_url(resource.public_id, resType === "image" ? "pdf" : "", {
+        resource_type: resType,
+        type: resource.type || "upload",
+        secure: true,
+        expires_at: Math.floor(Date.now() / 1000) + 3600, // 1 hour
+      });
+      return { url: signedUrl, contentType: "application/pdf" };
     } catch (err) {
-      lastError = err;
-      if (err.response?.status !== 404) throw err;
+      const httpCode = err.error?.http_code || err.http_code;
+      if (httpCode === 404) return null;
+      throw err;
     }
-  }
-  throw lastError;
+  };
+
+  const rawRes = await tryGet("raw");
+  if (rawRes) return rawRes;
+
+  const imgRes = await tryGet("image");
+  if (imgRes) return imgRes;
+
+  throw new Error(`Cloudinary resource not found for key: ${storageKey}.`);
 }
 
 export async function deletePdfFromCloud(storageKey) {

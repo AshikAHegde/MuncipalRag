@@ -12,7 +12,7 @@ import criminalAgent from "./criminalAgent.js";
 import civilAgent from "./civilAgent.js";
 import corporateAgent from "./corporateAgent.js";
 import taxAgent from "./taxAgent.js";
-import comparisonAgent from "./comparisonAgent.js";
+import { runComparisonAgent } from "./comparisonAgent.js";
 import reportAgent from "./reportAgent.js";
 import generalAgent from "./generalAgent.js";
 
@@ -276,21 +276,17 @@ export async function handleQuery({ query, mode, user = null, history = [] }) {
     || allDomainAnalyses[0]
     || { domain: primaryDomain, conflicts: [] };
 
-  const comparison = await comparisonAgent.compare({
-    query,
-    retrieved: allRetrieved,
-    domainAnalysis: primaryDomainAnalysis,
-    history,
-  });
+  // Step 2: Run the "Master Linker" Audit on merged conflicts
+  const auditedConflicts = await runComparisonAgent(query, conflicts);
 
   const lawyerReport = await reportAgent.generate({
     query,
     domain: primaryDomain,
     retrieved: allRetrieved,
     domainAnalysis: primaryDomainAnalysis,
-    comparison,
+    comparison: {}, // Unused in new multi-agent flow
     allDomainAnalyses,
-    conflicts,
+    conflicts: auditedConflicts, 
     history,
   });
 
@@ -305,7 +301,7 @@ export async function handleQuery({ query, mode, user = null, history = [] }) {
       domainRouting: orchestration,
       domainAnalysis: primaryDomainAnalysis,
       allDomainAnalyses,
-      comparison,
+      comparison: {},
     },
     sources: lawyerReport.sources,
   };

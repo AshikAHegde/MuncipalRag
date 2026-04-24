@@ -142,6 +142,18 @@ const IssueCard = ({ conflict, index }) => {
             </p>
           </div>
         )}
+
+        {/* Cross-Domain Impact (NEW) */}
+        {conflict.cross_domain_impact && conflict.cross_domain_impact !== 'Standard domain-specific issue.' && (
+          <div className="rounded-xl border border-[#a9d6f7]/20 bg-[#a9d6f7]/10 px-4 py-3">
+            <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-[#a9d6f7]">
+              Cross-Domain Impact
+            </p>
+            <p className="text-sm leading-relaxed text-[#a9d6f7]/90 italic">
+              {conflict.cross_domain_impact}
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -401,30 +413,32 @@ const AnswerCard = ({
             AI
           </div>
           {/* Header row */}
-          <div className="mb-3 flex items-center justify-between">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-y-2">
             <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-[#6b7280] dark:text-[#a9c3d8]">
               {mode === 'lawyer' ? t.lawyerModeShort : t.generalModeShort}
             </div>
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={handleSpeak}
-                disabled={isSpeechLoading}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-[#6b7280] transition hover:bg-moss-100 hover:text-moss-700 disabled:opacity-50 dark:text-[#a9c3d8] dark:hover:bg-[#26465d] dark:hover:text-[#dce8f3]"
-                aria-label={isSpeaking ? t.stopSpeaking : t.speakAnswer}
-              >
-                {isSpeaking ? <Square size={14} /> : <Volume2 size={14} />}
-              </button>
-              <button
-                type="button"
-                onClick={handleCopy}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-[#6b7280] transition hover:bg-moss-100 hover:text-moss-700 dark:text-[#a9c3d8] dark:hover:bg-[#26465d] dark:hover:text-[#dce8f3]"
-                aria-label={t.copyAnswer}
-              >
-                {copied ? <Check size={14} /> : <Copy size={14} />}
-              </button>
+            <div className="flex flex-wrap items-center gap-1">
+              <div className="flex items-center gap-1 rounded-lg bg-moss-50/50 p-0.5 dark:bg-[#1d3344]/50">
+                <button
+                  type="button"
+                  onClick={handleSpeak}
+                  disabled={isSpeechLoading}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-[#6b7280] transition hover:bg-moss-100 hover:text-moss-700 disabled:opacity-50 dark:text-[#a9c3d8] dark:hover:bg-[#26465d] dark:hover:text-[#dce8f3]"
+                  aria-label={isSpeaking ? t.stopSpeaking : t.speakAnswer}
+                >
+                  {isSpeaking ? <Square size={14} /> : <Volume2 size={14} />}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCopy}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-[#6b7280] transition hover:bg-moss-100 hover:text-moss-700 dark:text-[#a9c3d8] dark:hover:bg-[#26465d] dark:hover:text-[#dce8f3]"
+                  aria-label={t.copyAnswer}
+                >
+                  {copied ? <Check size={14} /> : <Copy size={14} />}
+                </button>
+              </div>
               {mode === 'compliance_review' && review?.lineReviews && (
-                <>
+                <div className="flex items-center gap-1 rounded-lg bg-moss-50/50 p-0.5 dark:bg-[#1d3344]/50">
                   <button
                     type="button"
                     onClick={() => exportReport('pdf')}
@@ -445,7 +459,7 @@ const AnswerCard = ({
                     {isExportingExcel ? <Loader2 size={13} className="animate-spin" /> : <FileSpreadsheet size={13} />}
                     XLSX
                   </button>
-                </>
+                </div>
               )}
             </div>
           </div>
