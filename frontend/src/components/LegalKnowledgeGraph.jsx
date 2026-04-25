@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import ForceGraph3D from 'react-force-graph-3d';
 import SpriteText from 'three-spritetext';
 import * as THREE from 'three';
-import { Maximize2, Minimize2, ZoomIn, ZoomOut, RefreshCw, X, FileText, Info } from 'lucide-react';
+import { Maximize2, Minimize2, ZoomIn, ZoomOut, RefreshCw, X, FileText, Info, Play, Pause, Type } from 'lucide-react';
 
 const DOMAIN_COLORS = {
   criminal: '#f43f5e', // rose-500
@@ -20,6 +20,7 @@ const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Grap
   const [hoveredNode, setHoveredNode] = useState(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const [isRotating, setIsRotating] = useState(true);
+  const [showLabels, setShowLabels] = useState(true);
 
   // Parse Graph Data
   const { nodes, edges } = useMemo(() => {
@@ -79,6 +80,26 @@ const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Grap
     }
   }, []);
 
+  // Adjust Physics Forces (Tighten Gap between nodes)
+  useEffect(() => {
+    if (fgRef.current) {
+      fgRef.current.d3Force('charge').strength(-60);
+      fgRef.current.d3Force('link').distance(25);
+    }
+  }, [nodes]);
+
+  // Handle Label Visibility toggle efficiently via ThreeJS Scene Traverse
+  useEffect(() => {
+    if (fgRef.current) {
+      const scene = fgRef.current.scene();
+      scene.traverse((obj) => {
+        if (obj.type === 'Sprite' && obj.name === 'node-label') {
+          obj.visible = showLabels;
+        }
+      });
+    }
+  }, [showLabels]);
+
   // Camera Auto Rotation
   useEffect(() => {
     if (!fgRef.current) return;
@@ -121,7 +142,7 @@ const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Grap
         currentPos.y - node.y,
         currentPos.z - node.z
       );
-      const targetDist = 120; // Fixed distance from node
+      const targetDist = 200; // Fixed distance from node (increased to prevent zooming too close)
       const ratio = targetDist / Math.max(dist, 1);
 
       fgRef.current.cameraPosition(
@@ -155,6 +176,18 @@ const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Grap
     }
   };
 
+  const handleReheat = () => {
+    if (fgRef.current) {
+      // Unpin all dragged nodes so they can naturally re-cluster
+      nodes.forEach(node => {
+        delete node.fx;
+        delete node.fy;
+        delete node.fz;
+      });
+      fgRef.current.d3ReheatSimulation();
+    }
+  };
+
   const handleZoomIn = () => handleZoom(0.6);
   const handleZoomOut = () => handleZoom(1.5);
   const handleFit = () => {
@@ -180,6 +213,15 @@ const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Grap
 
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1 rounded-lg bg-white/5 p-1 backdrop-blur-sm border border-white/10">
+            <button onClick={() => setShowLabels(!showLabels)} className={`p-1.5 rounded-md transition text-slate-300 ${!showLabels ? 'bg-rose-500/20 text-rose-400' : 'hover:bg-white/10'}`} title={showLabels ? "Hide Floating Labels" : "Show Floating Labels"}>
+              <Type size={16} />
+            </button>
+            <div className="w-px h-5 bg-white/10 mx-1"></div>
+            <button onClick={() => setIsRotating(!isRotating)} className={`p-1.5 rounded-md transition text-slate-300 ${isRotating ? 'bg-sky-500/20 text-sky-400' : 'hover:bg-white/10'}`} title={isRotating ? "Pause Orbit" : "Play Orbit"}>
+              {isRotating ? <Pause size={16} /> : <Play size={16} />}
+            </button>
+            <button onClick={handleReheat} className="p-1.5 hover:bg-white/10 rounded-md transition text-slate-300" title="Refresh Physics (Re-layout)"><RefreshCw size={16} /></button>
+            <div className="w-px h-5 bg-white/10 mx-1"></div>
             <button onClick={handleZoomIn} className="p-1.5 hover:bg-white/10 rounded-md transition text-slate-300" title="Zoom In"><ZoomIn size={16} /></button>
             <button onClick={handleZoomOut} className="p-1.5 hover:bg-white/10 rounded-md transition text-slate-300" title="Zoom Out"><ZoomOut size={16} /></button>
             <button onClick={handleFit} className="p-1.5 hover:bg-white/10 rounded-md transition text-slate-300" title="Reset View"><Maximize2 size={16} /></button>
@@ -203,13 +245,20 @@ const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Grap
             showNavInfo={false}
             rendererConfig={{ antialias: true, alpha: true }}
 
+            nodeVal={1} // Overrides automatic degree-centrality scaling
             nodeLabel={null} // completely custom
             onNodeHover={node => setHoveredNode(node)}
             onNodeClick={handleNodeClick}
+            onNodeDragEnd={node => {
+              // PIN the node in space so it doesn't snap back when user drags it
+              node.fx = node.x;
+              node.fy = node.y;
+              node.fz = node.z;
+            }}
 
             // Edges setup
             linkDirectionalParticles={d => d.label === 'MATCH' || d.type === 'MATCH' || d.data?.type === 'MATCH' ? 4 : 2}
-            linkDirectionalParticleSpeed={d => d.label === 'MATCH' || d.type === 'MATCH' || d.data?.type === 'MATCH' ? 0.015 : 0.005}
+            linkDirectionalParticleSpeed={d => d.label === 'MATCH' || d.type === 'MATCH' || d.data?.type === 'MATCH' ? 0.003 : 0.0015}
             linkDirectionalParticleWidth={d => d.label === 'MATCH' || d.type === 'MATCH' || d.data?.type === 'MATCH' ? 3 : 1.5}
             linkDirectionalParticleColor={link => link.label === 'MATCH' || link.type === 'MATCH' || link.data?.type === 'MATCH' ? '#38bdf8' : '#7dd3fc'}
             linkOpacity={0.4}
@@ -224,15 +273,15 @@ const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Grap
 
               // Colors
               const color = node.type === 'card' ? '#38bdf8' : // sky
-                            node.type === 'session' ? '#a855f7' : // purple
-                            node.type === 'section' ? (node.data?.isCitation ? '#94a3b8' : (DOMAIN_COLORS[node.data?.domain] || DOMAIN_COLORS.general)) :
-                            '#475569';
-                            
+                node.type === 'session' ? '#a855f7' : // purple
+                  node.type === 'section' ? (node.data?.isCitation ? '#94a3b8' : (DOMAIN_COLORS[node.data?.domain] || DOMAIN_COLORS.general)) :
+                    '#475569';
+
               const baseScale = 5; // User requested all circles to be same size
-              
+
               // 1. Inner Shiny Core
               const geometry = new THREE.SphereGeometry(baseScale, 24, 24);
-              const material = new THREE.MeshPhongMaterial({ 
+              const material = new THREE.MeshPhongMaterial({
                 color: color,
                 transparent: true,
                 opacity: 0.95,
@@ -245,17 +294,18 @@ const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Grap
               // 2. Outer Holographic Glowing Aura
               const auraGeometry = new THREE.SphereGeometry(baseScale * 1.6, 24, 24);
               const auraMaterial = new THREE.MeshBasicMaterial({
-                 color: color,
-                 transparent: true,
-                 opacity: 0.15,
-                 blending: THREE.AdditiveBlending, // Native Bloom/Glow trick
-                 depthWrite: false
+                color: color,
+                transparent: true,
+                opacity: 0.15,
+                blending: THREE.AdditiveBlending, // Native Bloom/Glow trick
+                depthWrite: false
               });
               const aura = new THREE.Mesh(auraGeometry, auraMaterial);
               group.add(aura);
 
               // Sprite Text Label
               const sprite = new SpriteText(node.label || 'Node');
+              sprite.name = 'node-label';
               sprite.color = '#ffffff';
               sprite.textHeight = 4;
               sprite.position.y = 12; // Float above node
@@ -266,6 +316,7 @@ const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Grap
               sprite.fontSize = 80; // Safe resolution to avoid WebGL max texture width smearing
               sprite.fontWeight = '500';
               sprite.material.depthWrite = true; // removed false to allow proper sorting
+              sprite.visible = showLabels;
               group.add(sprite);
 
               return group;
@@ -274,27 +325,42 @@ const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Grap
         )}
 
         {/* Legend Overlay */}
-        <div className="absolute bottom-6 left-6 flex flex-col gap-2 rounded-xl border border-white/10 bg-black/40 p-4 backdrop-blur-xl shadow-2xl pointer-events-none">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Graph Legend</p>
-          <div className="flex items-center gap-2 text-xs">
-            <span className="h-3 w-3 rounded-full bg-sky-400 shadow-[0_0_10px_rgba(56,189,248,0.8)]" />
-            <span className="text-slate-200">AI Answer Card</span>
-          </div>
-          <div className="flex items-center gap-2 text-xs">
-            <span className="h-3 w-3 rounded-full bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.8)]" />
-            <span className="text-slate-200">Criminal Section</span>
-          </div>
-          <div className="flex items-center gap-2 text-xs">
-            <span className="h-3 w-3 rounded-full bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.8)]" />
-            <span className="text-slate-200">Civil Section</span>
-          </div>
-          <div className="flex items-center gap-2 text-xs">
-            <span className="h-3 w-3 rounded-full bg-slate-500 shadow-[0_0_10px_rgba(100,116,139,0.8)]" />
-            <span className="text-slate-200">Raw Citation</span>
-          </div>
-          <div className="flex items-center gap-2 text-xs">
-            <span className="h-3 w-3 rounded-full bg-purple-500 shadow-[0_0_10px_rgba(168,85,247,0.8)]" />
-            <span className="text-slate-200">Chat Session</span>
+        <div className="absolute bottom-6 left-6 z-10 rounded-xl border border-white/10 bg-black/60 p-5 backdrop-blur-md shadow-2xl">
+          <h4 className="mb-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Graph Legend</h4>
+          <div className="space-y-2.5">
+            <div className="flex items-center gap-3 text-xs">
+              <span className="h-3 w-3 rounded-full bg-sky-400 shadow-[0_0_10px_rgba(56,189,248,0.8)]" />
+              <span className="text-slate-200">AI Answer Card</span>
+            </div>
+            <div className="flex items-center gap-3 text-xs">
+              <span className="h-3 w-3 rounded-full bg-purple-500 shadow-[0_0_10px_rgba(168,85,247,0.8)]" />
+              <span className="text-slate-200">Chat Session</span>
+            </div>
+            <div className="flex items-center gap-3 text-xs">
+              <span className="h-3 w-3 rounded-full bg-slate-400 shadow-[0_0_10px_rgba(148,163,184,0.8)]" />
+              <span className="text-slate-200">Raw Citation</span>
+            </div>
+            <div className="h-px w-full bg-white/10 my-2"></div>
+            <div className="flex items-center gap-3 text-xs">
+              <span className="h-3 w-3 rounded-full bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.8)]" />
+              <span className="text-slate-200">Criminal Conflict</span>
+            </div>
+            <div className="flex items-center gap-3 text-xs">
+              <span className="h-3 w-3 rounded-full bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.8)]" />
+              <span className="text-slate-200">Civil Conflict</span>
+            </div>
+            <div className="flex items-center gap-3 text-xs">
+              <span className="h-3 w-3 rounded-full bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.8)]" />
+              <span className="text-slate-200">Corporate Conflict</span>
+            </div>
+            <div className="flex items-center gap-3 text-xs">
+              <span className="h-3 w-3 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.8)]" />
+              <span className="text-slate-200">Tax Conflict</span>
+            </div>
+            <div className="flex items-center gap-3 text-xs">
+              <span className="h-3 w-3 rounded-full bg-violet-500 shadow-[0_0_10px_rgba(139,92,246,0.8)]" />
+              <span className="text-slate-200">Constitutional</span>
+            </div>
           </div>
         </div>
 
@@ -303,8 +369,8 @@ const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Grap
           <div className="absolute right-6 top-20 w-80 md:w-96 rounded-2xl border border-white/10 bg-black/60 p-6 shadow-[0_0_40px_rgba(0,0,0,0.5)] backdrop-blur-2xl animate-in slide-in-from-right-8 duration-300 z-20">
             <div className="flex items-start justify-between mb-4">
               <span className={`rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-wider ${selectedNode.type === 'card' ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30' :
-                  selectedNode.type === 'section' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
-                    'bg-slate-500/20 text-slate-400 border border-slate-500/30'
+                selectedNode.type === 'section' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
+                  'bg-slate-500/20 text-slate-400 border border-slate-500/30'
                 }`}>
                 {selectedNode.type}
               </span>
@@ -323,10 +389,10 @@ const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Grap
                   )}
                   {selectedNode.data?.text && (
                     <div className="mb-3">
-                       <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 opacity-80">Reference Text</p>
-                       <div className="p-4 rounded-xl bg-white/5 border border-white/5 text-sm leading-relaxed">
-                         {selectedNode.data.text}
-                       </div>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 opacity-80">Reference Text</p>
+                      <div className="p-4 rounded-xl bg-white/5 border border-white/5 text-sm leading-relaxed">
+                        {selectedNode.data.text}
+                      </div>
                     </div>
                   )}
                   {selectedNode.data?.meaning && (
