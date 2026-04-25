@@ -195,15 +195,28 @@ const SearchArea = () => {
     if (!showSessionGraph || !activeSessionId) return;
 
     let isCancelled = false;
-    const fetchSessionGraph = async () => {
+    const fetchMessageGraph = async () => {
+      const activeMessages = chatSessions.find(s => s.id === activeSessionId)?.conversations || [];
+      const latestMessage = activeMessages[activeMessages.length - 1];
+      
+      if (!latestMessage) {
+        setSessionGraphData(null);
+        return;
+      }
+
       setIsLoadingSessionGraph(true);
       try {
-        const response = await api.get(`/api/graph/session/${activeSessionId}`);
+        const hasConflicts = latestMessage.review?.conflicts?.length > 0;
+        const endpoint = hasConflicts 
+          ? `/api/graph/message/${activeSessionId}/${latestMessage.id}`
+          : `/api/graph/session/${activeSessionId}`;
+          
+        const response = await api.get(endpoint);
         if (!isCancelled) {
           setSessionGraphData(response.data.graph);
         }
       } catch (err) {
-        console.error('Failed to load session graph:', err);
+        console.error('Failed to load focused graph:', err);
       } finally {
         if (!isCancelled) {
           setIsLoadingSessionGraph(false);
@@ -211,7 +224,7 @@ const SearchArea = () => {
       }
     };
 
-    fetchSessionGraph();
+    fetchMessageGraph();
     return () => { isCancelled = true; };
   }, [activeSessionId, showSessionGraph]);
 
@@ -569,45 +582,15 @@ const SearchArea = () => {
               <button
                 type="button"
                 onClick={() => setShowSessionGraph(!showSessionGraph)}
-                title="Toggle Session Insights Graph"
-                className={`inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm transition ${
+                title="Toggle Legal Knowledge Graph"
+                className={`inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-semibold transition ${
                   showSessionGraph
-                    ? 'bg-moss-100 text-moss-700 dark:bg-[#26465d] dark:text-[#a9d6f7]'
-                    : 'premium-btn-secondary dark:text-[#a9c3d8] dark:hover:bg-[#1d3344]'
+                    ? 'bg-moss-100 text-moss-700 shadow-inner dark:bg-[#26465d] dark:text-[#a9d6f7]'
+                    : 'premium-btn-secondary dark:text-[#a9c3d8] dark:hover:bg-[#1d3344] shadow-sm'
                 }`}
               >
                 {isLoadingSessionGraph ? <Loader2 size={14} className="animate-spin" /> : <Network size={14} />}
-                <span className="hidden sm:inline">{showSessionGraph ? 'Hide Insights' : 'Show Insights'}</span>
-              </button>
-            )}
-            {user?.role === 'lawyer' && (
-              <button
-                type="button"
-                onClick={async () => {
-                  if (showProjectGraph) {
-                    setShowProjectGraph(false);
-                    return;
-                  }
-                  setIsLoadingProjectGraph(true);
-                  try {
-                    const response = await api.get('/api/graph/project');
-                    setProjectGraphData(response.data.graph);
-                    setShowProjectGraph(true);
-                  } catch (err) {
-                    console.error('Failed to load project graph:', err);
-                  } finally {
-                    setIsLoadingProjectGraph(false);
-                  }
-                }}
-                disabled={isLoadingProjectGraph}
-                className={`inline-flex h-9 items-center justify-center rounded-lg px-3 text-sm transition ${
-                  showProjectGraph
-                    ? 'bg-blue-600 text-white'
-                    : 'premium-btn-secondary dark:text-[#a9c3d8] dark:hover:bg-[#1d3344]'
-                }`}
-                title="Project Knowledge Graph"
-              >
-                {isLoadingProjectGraph ? <Loader2 size={14} className="animate-spin" /> : <Network size={14} />}
+                <span className="hidden sm:inline">{showSessionGraph ? 'Close Insights' : 'Open Insights'}</span>
               </button>
             )}
           </div>
@@ -757,7 +740,7 @@ const SearchArea = () => {
               <LegalKnowledgeGraph
                 graphData={sessionGraphData}
                 onClose={() => setShowSessionGraph(false)}
-                title="Session Insights Graph"
+                title={`Insights: ${activeSession?.title || 'Selected Chat'}`}
               />
             </div>
           ) : (
@@ -803,17 +786,6 @@ const SearchArea = () => {
         </>
       )}
 
-      {showProjectGraph && projectGraphData && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm sm:p-10">
-          <div className="h-full w-full max-w-7xl animate-in zoom-in-95 fade-in duration-300">
-            <LegalKnowledgeGraph 
-              graphData={projectGraphData} 
-              onClose={() => setShowProjectGraph(false)}
-              title="Global Legal Knowledge Graph — Cross-Session Relationship Map"
-            />
-          </div>
-        </div>
-      )}
     </section>
   );
 };

@@ -8,6 +8,28 @@ http://localhost:5000
 
 All responses are JSON unless noted otherwise.
 
+## How to Run
+
+To start the project in development mode:
+
+### 1. Backend
+
+Open a terminal and run:
+```bash
+cd backend
+npm run dev
+```
+The backend will run on [http://localhost:5000](http://localhost:5000).
+
+### 2. Frontend
+
+Open a **separate** terminal and run:
+```bash
+cd frontend
+npm run dev
+```
+The frontend will run on [http://localhost:3000](http://localhost:3000) (as configured in `vite.config.js`).
+
 ## Setup (Backend Install)
 
 Use this if `npm i` fails on another machine due to dependency resolution issues:
@@ -492,6 +514,66 @@ Success response:
 }
 ```
 
+## Graph Knowledge
+
+### `GET /api/graph/session/:sessionId`
+
+Fetch the interactive relationship graph for an entire chat session.
+
+Path Params:
+- `sessionId`: The ID of the chat session
+
+Success response:
+
+```json
+{
+  "success": true,
+  "graph": {
+    "nodes": [
+      { "id": "session-1", "type": "session", "label": "Session Title" },
+      { "id": "conv-1", "type": "card", "label": "Question Preview..." },
+      { "id": "sec-IPC-302", "type": "section", "label": "IPC 302" }
+    ],
+    "edges": [
+      { "id": "e1", "source": "session-1", "target": "conv-1", "label": "CONTAINS" },
+      { "id": "e2", "source": "conv-1", "target": "sec-IPC-302", "label": "CITES" }
+    ]
+  }
+}
+```
+
+### `GET /api/graph/message/:sessionId/:messageId`
+
+Fetch the focused conflict and citation graph for a single message/response.
+
+Path Params:
+- `sessionId`: The ID of the chat session
+- `messageId`: The specific message ID
+
+Success response:
+
+```json
+{
+  "success": true,
+  "graph": {
+    "nodes": [
+      { "id": "message-1", "type": "card", "label": "Case Analysis" },
+      { "id": "conflict-1", "type": "section", "label": "Section 101" }
+    ],
+    "edges": [
+      { "id": "e1", "source": "message-1", "target": "conflict-1", "label": "FLAGGED" }
+    ]
+  }
+}
+```
+
+### `GET /api/graph/project`
+
+Fetch the global knowledge graph spanning all active user sessions and known legal act relationships.
+
+Success response:
+- Similar structure to Session Graph but includes many-to-many act relationships from `LegalGraph`.
+
 ## Auth Header Format
 
 Use this header for protected routes:
@@ -512,3 +594,6 @@ Authorization: Bearer <your_jwt_token>
 - `GET /api/admin/documents/:docId/download`
 - `POST /api/admin/upload`
 - `POST /api/admin/process`
+- `GET /api/graph/session/:sessionId`
+- `GET /api/graph/message/:sessionId/:messageId`
+- `GET /api/graph/project`

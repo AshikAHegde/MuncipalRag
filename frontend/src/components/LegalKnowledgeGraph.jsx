@@ -33,8 +33,13 @@ const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Grap
         color = '#3b82f6';
         shape = 'round-rectangle';
       } else if (node.type === 'section') {
-        color = DOMAIN_COLORS[node.data?.domain] || DOMAIN_COLORS.general;
-        shape = 'diamond';
+        if (node.data?.isCitation) {
+           color = '#475569'; // Slate-600 for citations
+           shape = 'round-tag';
+        } else {
+           color = DOMAIN_COLORS[node.data?.domain] || DOMAIN_COLORS.general;
+           shape = 'diamond';
+        }
       } else if (node.type === 'session') {
         color = '#8b5cf6';
         shape = 'hexagon';
@@ -110,6 +115,16 @@ const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Grap
             'text-rotation': 'autorotate',
             'text-margin-y': -10,
             'opacity': 0.6
+          }
+        },
+        {
+          selector: 'edge[type]',
+          style: {
+            'line-color': '#10b981',
+            'target-arrow-color': '#10b981',
+            'width': 3,
+            'opacity': 0.9,
+            'label': 'data(type)'
           }
         },
         {
@@ -204,6 +219,10 @@ const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Grap
            <div className="flex items-center gap-2 text-xs">
             <span className="h-3 w-3 rotate-45 border border-slate-400" style={{ backgroundColor: DOMAIN_COLORS.civil }} />
             <span>Civil Section</span>
+          </div>
+          <div className="flex items-center gap-2 text-xs">
+            <span className="h-3 w-3 rounded-full bg-slate-500" />
+            <span>Raw Citation</span>
           </div>
           <div className="flex items-center gap-2 text-xs">
             <span className="h-3 w-3 rounded-full bg-purple-500" />

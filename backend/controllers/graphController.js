@@ -47,10 +47,22 @@ export const getSessionGraph = async (req, res) => {
         id: `e-session-conv-${conv._id}`,
         source: `session-${session._id}`,
         target: convId,
-        label: 'contains'
+        label: 'CONTAINS'
       });
 
-      // 3. Add Source Nodes (Sections)
+      // Link Card to Previous Card (Chain of Thought)
+      if (idx > 0) {
+        const prevConvId = `conv-${session.conversations[idx - 1]._id}`;
+        edges.push({
+          id: `e-conv-chain-${conv._id}`,
+          source: prevConvId,
+          target: convId,
+          label: 'NEXT',
+          style: { 'line-style': 'dashed', 'opacity': 0.4 }
+        });
+      }
+
+      // 3. Add Source Nodes (Sections) and Conflicts
       conv.sources.forEach((src) => {
         const sectionSlug = src.section || `Match-${idx}-${src.page}`;
         const sectionId = `sec-${sectionSlug}`;
@@ -59,7 +71,7 @@ export const getSessionGraph = async (req, res) => {
           nodes.push({
             id: sectionId,
             type: 'section',
-            label: src.section || 'Unknown Section',
+            label: src.section || 'Cited Section',
             data: {
               section: src.section,
               page: src.page,
@@ -70,15 +82,79 @@ export const getSessionGraph = async (req, res) => {
           processedSections.add(sectionId);
         }
 
-        // Link Card to Section
         edges.push({
           id: `e-conv-sec-${conv._id}-${sectionSlug}`,
           source: convId,
           target: sectionId,
-          label: 'cites'
+          label: 'CITES'
         });
       });
+
+      // 4. Add Conflict Insights (Lawyer Mode)
+      if (conv.review?.conflicts && Array.isArray(conv.review.conflicts)) {
+        conv.review.conflicts.forEach((conflict, cIdx) => {
+          const conflictId = `conflict-${conv._id}-${cIdx}`;
+          const sectionLabel = conflict.section || (conflict.section_number ? `Section ${conflict.section_number}` : `Issue ${cIdx + 1}`);
+          
+          nodes.push({
+            id: conflictId,
+            type: 'section',
+            label: sectionLabel,
+            data: {
+              domain: conflict.domain,
+              section: sectionLabel,
+              sectionName: conflict.section_name,
+              meaning: conflict.issue_meaning,
+              reason: conflict.why_flagged,
+              consequence: conflict.consequence
+            }
+          });
+
+          edges.push({
+            id: `e-conv-conflict-${conv._id}-${cIdx}`,
+            source: convId,
+            target: conflictId,
+            label: 'FLAGGED'
+          });
+        });
+      }
     });
+
+    // 5. Add Inter-Section Relationships (Deep Knowledge Map)
+    const activeSectionIds = Array.from(processedSections).map(id => id.replace('sec-', ''));
+    if (activeSectionIds.length > 0) {
+      const legalConnections = await LegalGraph.find({
+        sectionId: { $in: activeSectionIds }
+      });
+
+      legalConnections.forEach(node => {
+        node.edges.forEach(edge => {
+          const targetId = `sec-${edge.targetSectionId}`;
+          
+          edges.push({
+            id: `e-sec-sec-${node.sectionId}-${edge.targetSectionId}`,
+            source: `sec-${node.sectionId}`,
+            target: targetId,
+            label: edge.type,
+            data: { 
+              type: edge.type, 
+              reason: edge.reason,
+              isInterSection: true 
+            }
+          });
+
+          if (!processedSections.has(targetId)) {
+            nodes.push({
+              id: targetId,
+              type: 'section',
+              label: edge.targetSectionId,
+              data: { section: edge.targetSectionId, isRelated: true }
+            });
+            processedSections.add(targetId);
+          }
+        });
+      });
+    }
 
     res.json({ success: true, graph: { nodes, edges } });
   } catch (error) {
@@ -257,13 +333,72 @@ export const getMessageConflictGraph = async (req, res) => {
       });
     });
 
-    // 3. Cross-Domain Links (if any)
-    // For now, we can infer some links if they exist in the review summary or cross_domain_impact field
-    conflicts.forEach((c, idx) => {
-       if (c.cross_domain_impact && c.cross_domain_impact !== 'Standard domain-specific issue.') {
-          // Add a special "impact" note or edge
-       }
+    // 2b. Add Citation Nodes (Sources)
+    const sources = message.sources || [];
+    sources.forEach((src, sIdx) => {
+      const sectionLabel = src.section || `Source ${sIdx + 1}`;
+      const sectionId = `sec-${sectionLabel}-${sIdx}`;
+
+      nodes.push({
+        id: sectionId,
+        type: 'section',
+        label: sectionLabel,
+        data: {
+          section: src.section,
+          page: src.page,
+          text: src.text,
+          source: src.source,
+          isCitation: true
+        }
+      });
+
+      // Edge from Case to Citation
+      edges.push({
+        id: `e-case-source-${sIdx}`,
+        source: `message-${message._id}`,
+        target: sectionId,
+        label: 'CITES'
+      });
     });
+
+    // 3. Cross-Domain and Inter-Section Links
+    const sectionIds = conflicts.map(c => c.section || (c.section_number ? `Section ${c.section_number}` : null)).filter(Boolean);
+    
+    if (sectionIds.length > 0) {
+      const legalConnections = await LegalGraph.find({
+        sectionId: { $in: sectionIds }
+      });
+
+      legalConnections.forEach(node => {
+        node.edges.forEach(edge => {
+          const targetId = `sec-${edge.targetSectionId}`;
+          const sourceId = nodes.find(n => n.label === node.sectionId || n.data?.section === node.sectionId)?.id;
+
+          if (sourceId) {
+             edges.push({
+              id: `e-sec-sec-${node.sectionId}-${edge.targetSectionId}`,
+              source: sourceId,
+              target: targetId,
+              label: edge.type,
+              data: { 
+                type: edge.type, 
+                reason: edge.reason,
+                isInterSection: true 
+              }
+            });
+
+            if (!nodes.some(n => n.id === targetId)) {
+              nodes.push({
+                id: targetId,
+                type: 'section',
+                label: edge.targetSectionId,
+                data: { section: edge.targetSectionId, isRelated: true }
+              });
+            }
+          }
+        });
+      });
+    }
 
     res.json({ success: true, graph: { nodes, edges } });
   } catch (error) {
