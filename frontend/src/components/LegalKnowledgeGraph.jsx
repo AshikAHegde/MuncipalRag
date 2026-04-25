@@ -202,7 +202,7 @@ const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Grap
   const toggleFullscreen = () => setIsFullscreen(!isFullscreen);
 
   return (
-    <div className={`flex flex-col overflow-hidden bg-[#0f172a] text-slate-200 transition-all duration-300 ${isFullscreen ? 'fixed inset-0 z-[100]' : 'relative h-full w-full border-slate-700 shadow-2xl'}`}>
+    <div className={`flex flex-col overflow-hidden bg-[#0f172a] text-slate-200 transition-all duration-300 ${isFullscreen ? 'fixed inset-0 z-100' : 'relative h-full w-full border-slate-700 shadow-2xl'}`}>
       {/* Header */}
       <div className="flex shrink-0 items-center justify-between border-b border-slate-700 bg-slate-900/50 px-4 py-3 backdrop-blur-md">
         <div className="flex items-center gap-3">
