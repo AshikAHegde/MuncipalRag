@@ -1,0 +1,7 @@
+
+> backend@1.0.0 start
+> node app.js
+
+[dotenv@17.3.1] injecting env (11) from .env -- tip: 🔐 encrypt with Dotenvx: https://dotenvx.com
+MongoDB connected successfully.
+Server running on http://localhost:5000

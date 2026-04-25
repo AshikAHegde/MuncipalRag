@@ -8,12 +8,6 @@ const getConflictSolution = (conflict = {}) =>
   || conflict.recommended_response
   || '';
 
-const buildSolutionLabel = (solution = '') => {
-  const text = String(solution || '').trim();
-  if (!text) return 'Response / Solution';
-  return text.length > 34 ? `${text.substring(0, 34)}...` : text;
-};
-
 const normalizeGraphText = (value = '') =>
   String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
@@ -159,7 +153,6 @@ export const getSessionGraph = async (req, res) => {
       if (conv.review?.conflicts && Array.isArray(conv.review.conflicts)) {
         conv.review.conflicts.forEach((conflict, cIdx) => {
           const conflictId = `conflict-${conv._id}-${cIdx}`;
-          const solutionId = `solution-${conv._id}-${cIdx}`;
           const sectionLabel = conflict.section || (conflict.section_number ? `Section ${conflict.section_number}` : `Issue ${cIdx + 1}`);
           const solution = getConflictSolution(conflict);
           const matchedSource = findMatchingSourceNode(sourceNodes, conflict);
@@ -197,35 +190,8 @@ export const getSessionGraph = async (req, res) => {
             });
           }
 
-          if (solution) {
-            nodes.push({
-              id: solutionId,
-              type: 'solution',
-              label: buildSolutionLabel(solution),
-              data: {
-                solution,
-                domain: conflict.domain,
-                section: sectionLabel
-              }
-            });
-
-            edges.push({
-              id: `e-conflict-solution-${conv._id}-${cIdx}`,
-              source: conflictId,
-              target: solutionId,
-              label: 'RESPONSE'
-            });
-
-            if (matchedSource) {
-              edges.push({
-                id: `e-match-solution-${conv._id}-${cIdx}`,
-                source: matchedSource.id,
-                target: solutionId,
-                label: 'RESPONSE',
-                data: { type: 'RESPONSE' }
-              });
-            }
-          }
+          // The solution is kept on the conflict/matched source details panel
+          // instead of rendering a separate response node in the graph.
         });
       }
     });
@@ -415,7 +381,8 @@ export const getMessageConflictGraph = async (req, res) => {
       data: { question: message.question, answer: message.answer }
     });
 
-    // 2. Add Citation Nodes (Sources / Match boxes)
+    // 2. Prepare Citation Nodes (Sources / Match boxes). Only matched citations
+    // are rendered so the focused graph does not show unused Match nodes.
     const sources = message.sources || [];
     sources.forEach((src, sIdx) => {
       const sectionLabel = src.section || `Source ${sIdx + 1}`;
@@ -425,34 +392,43 @@ export const getMessageConflictGraph = async (req, res) => {
         section: src.section,
         label: sectionLabel,
         text: src.text,
+        page: src.page,
+        source: src.source,
+        sourceIndex: sIdx,
       });
+    });
+
+    const renderedSourceIds = new Set();
+    const ensureSourceNode = (source) => {
+      if (!source || renderedSourceIds.has(source.id)) return;
 
       nodes.push({
-        id: sectionId,
+        id: source.id,
         type: 'section',
-        label: sectionLabel,
+        label: source.label,
         data: {
-          section: src.section,
-          page: src.page,
-          text: src.text,
-          source: src.source,
+          section: source.section,
+          page: source.page,
+          text: source.text,
+          source: source.source,
           isCitation: true
         }
       });
 
       edges.push({
-        id: `e-case-source-${sIdx}`,
+        id: `e-case-source-${source.sourceIndex}`,
         source: `message-${message._id}`,
-        target: sectionId,
+        target: source.id,
         label: 'CITES'
       });
-    });
+
+      renderedSourceIds.add(source.id);
+    };
 
     // 3. Conflict Nodes
     const conflicts = message.review?.conflicts || [];
     conflicts.forEach((conflict, idx) => {
       const conflictId = `conflict-${idx}`;
-      const solutionId = `solution-${idx}`;
       const sectionLabel = conflict.section || (conflict.section_number ? `Section ${conflict.section_number}` : `Provision ${idx + 1}`);
       const solution = getConflictSolution(conflict);
       const matchedSource = findMatchingSourceNode(sourceNodes, conflict);
@@ -481,6 +457,7 @@ export const getMessageConflictGraph = async (req, res) => {
       });
 
       if (matchedSource) {
+        ensureSourceNode(matchedSource);
         attachSolutionToSourceNode(nodes, matchedSource.id, solution, sectionLabel);
         edges.push({
           id: `e-conflict-match-${idx}`,
@@ -489,36 +466,6 @@ export const getMessageConflictGraph = async (req, res) => {
           label: 'MATCH',
           data: { type: 'MATCH' }
         });
-      }
-
-      if (solution) {
-        nodes.push({
-          id: solutionId,
-          type: 'solution',
-          label: buildSolutionLabel(solution),
-          data: {
-            solution,
-            domain: conflict.domain,
-            section: sectionLabel
-          }
-        });
-
-        edges.push({
-          id: `e-conflict-solution-${idx}`,
-          source: conflictId,
-          target: solutionId,
-          label: 'RESPONSE'
-        });
-
-        if (matchedSource) {
-          edges.push({
-            id: `e-match-solution-${idx}`,
-            source: matchedSource.id,
-            target: solutionId,
-            label: 'RESPONSE',
-            data: { type: 'RESPONSE' }
-          });
-        }
       }
     });
 

@@ -1,7 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import cytoscape from 'cytoscape';
 import fcose from 'cytoscape-fcose';
-import { Maximize2, Minimize2, ZoomIn, ZoomOut, RefreshCw, X, FileText, Info, CheckCircle2 } from 'lucide-react';
+import { Maximize2, Minimize2, ZoomIn, ZoomOut, RefreshCw, X, FileText, Info } from 'lucide-react';
 
 cytoscape.use(fcose);
 
@@ -17,15 +17,48 @@ const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Grap
   const containerRef = useRef(null);
   const cyRef = useRef(null);
   const [selectedNode, setSelectedNode] = useState(null);
+  const [hoveredNode, setHoveredNode] = useState(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const displayGraph = useMemo(() => {
+    if (!graphData) return { nodes: [], edges: [] };
+
+    const rawNodes = Array.isArray(graphData.nodes) ? graphData.nodes : [];
+    const rawEdges = Array.isArray(graphData.edges) ? graphData.edges : [];
+    const solutionNodeIds = new Set(rawNodes.filter((node) => node.type === 'solution').map((node) => node.id));
+
+    const edgesWithoutSolutions = rawEdges.filter((edge) => (
+      !solutionNodeIds.has(edge.source)
+      && !solutionNodeIds.has(edge.target)
+      && edge.label !== 'RESPONSE'
+      && edge.data?.type !== 'RESPONSE'
+    ));
+
+    const hasConflictNodes = rawNodes.some((node) => String(node.id || '').startsWith('conflict-'));
+    const matchedCitationIds = new Set();
+    edgesWithoutSolutions.forEach((edge) => {
+      if (edge.label === 'MATCH' || edge.data?.type === 'MATCH') {
+        matchedCitationIds.add(edge.source);
+        matchedCitationIds.add(edge.target);
+      }
+    });
+
+    const nodes = rawNodes.filter((node) => (
+      !solutionNodeIds.has(node.id)
+      && (!hasConflictNodes || !node.data?.isCitation || matchedCitationIds.has(node.id))
+    ));
+    const nodeIds = new Set(nodes.map((node) => node.id));
+    const edges = edgesWithoutSolutions.filter((edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target));
+
+    return { nodes, edges };
+  }, [graphData]);
 
   useEffect(() => {
-    if (!containerRef.current || !graphData) return;
+    if (!containerRef.current || !displayGraph) return;
 
     const elements = [];
     
     // Format nodes
-    graphData.nodes.forEach(node => {
+    displayGraph.nodes.forEach(node => {
       let color = '#94a3b8';
       let shape = 'ellipse';
       
@@ -43,9 +76,6 @@ const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Grap
       } else if (node.type === 'session') {
         color = '#8b5cf6';
         shape = 'hexagon';
-      } else if (node.type === 'solution') {
-        color = '#22c55e';
-        shape = 'round-rectangle';
       }
 
       elements.push({
@@ -63,7 +93,7 @@ const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Grap
     });
 
     // Format edges
-    graphData.edges.forEach(edge => {
+    displayGraph.edges.forEach(edge => {
       elements.push({
         data: { 
           id: edge.id, 
@@ -105,14 +135,6 @@ const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Grap
           }
         },
         {
-          selector: 'node[type="solution"]',
-          style: {
-             'width': '90px',
-             'height': '44px',
-             'text-max-width': '78px',
-          }
-        },
-        {
           selector: 'edge',
           style: {
             'width': 2,
@@ -125,7 +147,9 @@ const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Grap
             'color': '#94a3b8',
             'text-rotation': 'autorotate',
             'text-margin-y': -10,
-            'opacity': 0.6
+            'opacity': 0.6,
+            'transition-property': 'opacity line-color target-arrow-color width',
+            'transition-duration': '150ms'
           }
         },
         {
@@ -149,13 +173,43 @@ const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Grap
           }
         },
         {
-          selector: 'edge[type="RESPONSE"]',
+          selector: '.dimmed',
           style: {
-            'line-color': '#22c55e',
-            'target-arrow-color': '#22c55e',
-            'width': 3,
-            'opacity': 0.9,
-            'label': 'RESPONSE'
+            'opacity': 0.14
+          }
+        },
+        {
+          selector: 'node.hover-neighborhood',
+          style: {
+            'opacity': 1,
+            'border-width': 3,
+            'border-color': '#93c5fd',
+            'shadow-blur': 16,
+            'shadow-color': '#60a5fa',
+            'shadow-opacity': 0.35,
+            'z-index': 20
+          }
+        },
+        {
+          selector: 'node.hovered',
+          style: {
+            'border-width': 4,
+            'border-color': '#f8fafc',
+            'shadow-blur': 24,
+            'shadow-color': '#38bdf8',
+            'shadow-opacity': 0.65,
+            'z-index': 30
+          }
+        },
+        {
+          selector: 'edge.hover-edge',
+          style: {
+            'opacity': 1,
+            'width': 4,
+            'line-color': '#f8fafc',
+            'target-arrow-color': '#f8fafc',
+            'color': '#e2e8f0',
+            'z-index': 25
           }
         },
         {
@@ -183,6 +237,30 @@ const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Grap
       setSelectedNode(evt.target.data());
     });
 
+    cy.on('mouseover', 'node', (evt) => {
+      const node = evt.target;
+      const neighborhood = node.closedNeighborhood();
+
+      cy.elements().addClass('dimmed');
+      neighborhood.removeClass('dimmed').addClass('hover-neighborhood');
+      node.addClass('hovered');
+      node.connectedEdges().addClass('hover-edge');
+      setHoveredNode(node.data());
+
+      if (containerRef.current) {
+        containerRef.current.style.cursor = 'pointer';
+      }
+    });
+
+    cy.on('mouseout', 'node', () => {
+      cy.elements().removeClass('dimmed hover-neighborhood hovered hover-edge');
+      setHoveredNode(null);
+
+      if (containerRef.current) {
+        containerRef.current.style.cursor = '';
+      }
+    });
+
     cy.on('tap', (evt) => {
       if (evt.target === cy) {
         setSelectedNode(null);
@@ -194,7 +272,7 @@ const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Grap
     return () => {
       cy.destroy();
     };
-  }, [graphData]);
+  }, [displayGraph]);
 
   const handleZoomIn = () => cyRef.current?.zoom(cyRef.current.zoom() * 1.2);
   const handleZoomOut = () => cyRef.current?.zoom(cyRef.current.zoom() * 0.8);
@@ -211,7 +289,7 @@ const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Grap
           </div>
           <div>
             <h3 className="text-sm font-bold tracking-tight text-white">{title}</h3>
-            <p className="text-[10px] text-slate-400 uppercase tracking-widest">{graphData?.nodes?.length || 0} Nodes · {graphData?.edges?.length || 0} Edges</p>
+            <p className="text-[10px] text-slate-400 uppercase tracking-widest">{displayGraph.nodes.length} Nodes · {displayGraph.edges.length} Edges</p>
           </div>
         </div>
         
@@ -256,14 +334,17 @@ const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Grap
             <span>Raw Citation</span>
           </div>
           <div className="flex items-center gap-2 text-xs">
-            <span className="h-3 w-3 rounded-md bg-emerald-500" />
-            <span>Response / Solution</span>
-          </div>
-          <div className="flex items-center gap-2 text-xs">
             <span className="h-3 w-3 rounded-full bg-purple-500" />
             <span>Chat Session</span>
           </div>
         </div>
+
+        {hoveredNode && !selectedNode && (
+          <div className="pointer-events-none absolute right-4 top-4 max-w-72 rounded-xl border border-sky-400/30 bg-slate-900/90 px-3 py-2 shadow-2xl shadow-sky-500/10 backdrop-blur-md">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-sky-300">Hover focus</p>
+            <p className="mt-1 text-sm font-semibold leading-snug text-white">{hoveredNode.label}</p>
+          </div>
+        )}
 
         {/* Selected Node Details */}
         {selectedNode && (
@@ -342,17 +423,6 @@ const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Grap
                    </div>
                    <div className="p-2 rounded bg-blue-500/5">
                      {selectedNode.answer?.substring(0, 200)}...
-                   </div>
-                 </>
-               )}
-               {selectedNode.type === 'solution' && (
-                 <>
-                   <div className="flex items-center gap-2 text-emerald-300">
-                     <CheckCircle2 size={12}/>
-                     <span>Attached to: {selectedNode.section || 'Conflict'}</span>
-                   </div>
-                   <div className="p-2 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-50">
-                     {selectedNode.solution}
                    </div>
                  </>
                )}
