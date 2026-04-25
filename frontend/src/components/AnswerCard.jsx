@@ -12,6 +12,7 @@ import {
   Gavel,
   Info,
   Loader2,
+  RefreshCw,
   Scale,
   ShieldAlert,
   Square,
@@ -19,6 +20,7 @@ import {
 } from 'lucide-react';
 import api from '../lib/api.js';
 import { DEFAULT_LANGUAGE, getTranslation } from '../lib/i18n.js';
+import LegalKnowledgeGraph from './LegalKnowledgeGraph.jsx';
 
 // ─── Domain configuration (colours + labels) ───────────────────────────────
 const DOMAIN_CONFIG = {
@@ -255,6 +257,9 @@ const AnswerCard = ({
   const [isExportingExcel, setIsExportingExcel] = useState(false);
   const [audioError, setAudioError] = useState('');
   const [exportError, setExportError] = useState('');
+  const [showGraph, setShowGraph] = useState(false);
+  const [isLoadingGraph, setIsLoadingGraph] = useState(false);
+  const [graphData, setGraphData] = useState(null);
   const audioRef = useRef(null);
   const t = getTranslation(language);
 
@@ -582,18 +587,51 @@ const AnswerCard = ({
           {audioError && <p className="mt-2 text-xs text-rose-600 dark:text-rose-400">{audioError}</p>}
           {exportError && <p className="mt-2 text-xs text-rose-600 dark:text-rose-400">{exportError}</p>}
 
-          {/* Sources */}
+          {/* Sources & Graph */}
           {!isTyping && sources && sources.length > 0 && !isNotAvailable && (
             <div className="mt-4 border-t border-[#e6e0d6] pt-3 dark:border-[#355269]">
-              <button
-                type="button"
-                onClick={() => setExpandedSources((value) => !value)}
-                className="inline-flex items-center gap-2 text-xs font-medium uppercase tracking-[0.08em] text-[#6b7280] transition hover:text-moss-700 dark:text-[#a9c3d8] dark:hover:text-[#dce8f3]"
-              >
-                <BookOpen size={13} />
-                {t.sources} ({sources.length})
-                {expandedSources ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-              </button>
+              <div className="flex flex-wrap items-center gap-4">
+                <button
+                  type="button"
+                  onClick={() => setExpandedSources((value) => !value)}
+                  className="inline-flex items-center gap-2 text-xs font-medium uppercase tracking-[0.08em] text-[#6b7280] transition hover:text-moss-700 dark:text-[#a9c3d8] dark:hover:text-[#dce8f3]"
+                >
+                  <BookOpen size={13} />
+                  {t.sources} ({sources.length})
+                  {expandedSources ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (showGraph) {
+                      setShowGraph(false);
+                      return;
+                    }
+                    if (!sessionId || !messageId) return;
+                    setIsLoadingGraph(true);
+                    try {
+                      // If it's a lawyer conflict report, show a focused conflict graph
+                      const endpoint = (hasConflicts) 
+                        ? `/api/graph/message/${sessionId}/${messageId}`
+                        : `/api/graph/session/${sessionId}`;
+                      
+                      const response = await api.get(endpoint);
+                      setGraphData(response.data.graph);
+                      setShowGraph(true);
+                    } catch (error) {
+                      console.error('Failed to load graph:', error);
+                    } finally {
+                      setIsLoadingGraph(false);
+                    }
+                  }}
+                  disabled={isLoadingGraph || !sessionId || !messageId}
+                  className="inline-flex items-center gap-2 text-xs font-medium uppercase tracking-[0.08em] text-[#6b7280] transition hover:text-blue-600 disabled:opacity-50 dark:text-[#a9c3d8] dark:hover:text-[#8ec3e8]"
+                >
+                  {isLoadingGraph ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+                  Visualize Conflict Graph
+                </button>
+              </div>
 
               {expandedSources && (
                 <div className="mt-3 space-y-2">
@@ -606,6 +644,16 @@ const AnswerCard = ({
                       <p className="text-[#1a1a1a] dark:text-[#dce8f3]">{src.text}</p>
                     </div>
                   ))}
+                </div>
+              )}
+
+              {showGraph && graphData && (
+                <div className="mt-4 animate-in fade-in zoom-in-95 duration-300">
+                  <LegalKnowledgeGraph 
+                    graphData={graphData} 
+                    onClose={() => setShowGraph(false)}
+                    title={`Session Graph: ${question.substring(0, 30)}...`}
+                  />
                 </div>
               )}
             </div>

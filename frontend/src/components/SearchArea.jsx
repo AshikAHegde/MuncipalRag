@@ -5,6 +5,7 @@ import {
   MessageSquareText,
   Mic,
   MicOff,
+  Network,
   Plus,
   RefreshCw,
   Search,
@@ -13,6 +14,7 @@ import {
 import api from '../lib/api.js';
 import { DEFAULT_LANGUAGE, getTranslation, LANGUAGE_OPTIONS } from '../lib/i18n.js';
 import AnswerCard from './AnswerCard.jsx';
+import LegalKnowledgeGraph from './LegalKnowledgeGraph.jsx';
 import { useAuth } from '../hooks/useAuth.js';
 
 const normalizeMode = (mode) => (mode === 'lawyer' ? 'lawyer' : 'general');
@@ -68,8 +70,15 @@ const SearchArea = () => {
   const dragStartXRef = useRef(0);
   const dragStartWidthRef = useRef(288);
   const [sidebarWidth, setSidebarWidth] = useState(288); // 18rem
+  const [showSessionGraph, setShowSessionGraph] = useState(false);
+  const [isLoadingSessionGraph, setIsLoadingSessionGraph] = useState(false);
+  const [sessionGraphData, setSessionGraphData] = useState(null);
+  const [showProjectGraph, setShowProjectGraph] = useState(false);
+  const [isLoadingProjectGraph, setIsLoadingProjectGraph] = useState(false);
+  const [projectGraphData, setProjectGraphData] = useState(null);
   const MIN_SIDEBAR = 180;
   const MAX_SIDEBAR = 480;
+  const GRAPH_SIDEBAR_WIDTH = 450;
 
   const activeSession = chatSessions.find((session) => session.id === activeSessionId) || null;
   const activeMessages = activeSession?.conversations || [];
@@ -181,6 +190,30 @@ const SearchArea = () => {
       behavior: 'smooth',
     });
   }, [activeMessages.length, isLoading, activeSessionId]);
+
+  useEffect(() => {
+    if (!showSessionGraph || !activeSessionId) return;
+
+    let isCancelled = false;
+    const fetchSessionGraph = async () => {
+      setIsLoadingSessionGraph(true);
+      try {
+        const response = await api.get(`/api/graph/session/${activeSessionId}`);
+        if (!isCancelled) {
+          setSessionGraphData(response.data.graph);
+        }
+      } catch (err) {
+        console.error('Failed to load session graph:', err);
+      } finally {
+        if (!isCancelled) {
+          setIsLoadingSessionGraph(false);
+        }
+      }
+    };
+
+    fetchSessionGraph();
+    return () => { isCancelled = true; };
+  }, [activeSessionId, showSessionGraph]);
 
   const startNewChat = (nextMode = mode) => {
     setActiveSessionId(null);
@@ -532,6 +565,51 @@ const SearchArea = () => {
                 <span className="hidden sm:inline">{t.lawyerModeShort}</span>
               </button>
             )}
+            {user?.role === 'lawyer' && (
+              <button
+                type="button"
+                onClick={() => setShowSessionGraph(!showSessionGraph)}
+                title="Toggle Session Insights Graph"
+                className={`inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm transition ${
+                  showSessionGraph
+                    ? 'bg-moss-100 text-moss-700 dark:bg-[#26465d] dark:text-[#a9d6f7]'
+                    : 'premium-btn-secondary dark:text-[#a9c3d8] dark:hover:bg-[#1d3344]'
+                }`}
+              >
+                {isLoadingSessionGraph ? <Loader2 size={14} className="animate-spin" /> : <Network size={14} />}
+                <span className="hidden sm:inline">{showSessionGraph ? 'Hide Insights' : 'Show Insights'}</span>
+              </button>
+            )}
+            {user?.role === 'lawyer' && (
+              <button
+                type="button"
+                onClick={async () => {
+                  if (showProjectGraph) {
+                    setShowProjectGraph(false);
+                    return;
+                  }
+                  setIsLoadingProjectGraph(true);
+                  try {
+                    const response = await api.get('/api/graph/project');
+                    setProjectGraphData(response.data.graph);
+                    setShowProjectGraph(true);
+                  } catch (err) {
+                    console.error('Failed to load project graph:', err);
+                  } finally {
+                    setIsLoadingProjectGraph(false);
+                  }
+                }}
+                disabled={isLoadingProjectGraph}
+                className={`inline-flex h-9 items-center justify-center rounded-lg px-3 text-sm transition ${
+                  showProjectGraph
+                    ? 'bg-blue-600 text-white'
+                    : 'premium-btn-secondary dark:text-[#a9c3d8] dark:hover:bg-[#1d3344]'
+                }`}
+                title="Project Knowledge Graph"
+              >
+                {isLoadingProjectGraph ? <Loader2 size={14} className="animate-spin" /> : <Network size={14} />}
+              </button>
+            )}
           </div>
         </header>
 
@@ -668,6 +746,38 @@ const SearchArea = () => {
         </form>
       </div>
 
+      {/* Graph Sidebar (Right) */}
+      {showSessionGraph && user?.role === 'lawyer' && (
+        <aside
+          style={{ width: GRAPH_SIDEBAR_WIDTH }}
+          className="hidden shrink-0 border-l border-[#e6e0d6] bg-cream-100 dark:border-[#355269] dark:bg-[#0f1820] xl:flex xl:flex-col"
+        >
+          {sessionGraphData ? (
+            <div className="h-full w-full">
+              <LegalKnowledgeGraph
+                graphData={sessionGraphData}
+                onClose={() => setShowSessionGraph(false)}
+                title="Session Insights Graph"
+              />
+            </div>
+          ) : (
+            <div className="flex h-full flex-col items-center justify-center p-6 text-center">
+              {isLoadingSessionGraph ? (
+                <div className="flex flex-col items-center gap-3">
+                  <Loader2 size={32} className="animate-spin text-moss-600 dark:text-[#a9d6f7]" />
+                  <p className="text-sm text-[#6b7280] dark:text-[#a9c3d8]">Analyzing legal connections...</p>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-3 opacity-50">
+                  <Network size={48} className="text-[#6b7280] dark:text-[#a9c3d8]" />
+                  <p className="text-sm text-[#6b7280] dark:text-[#a9c3d8]">No relationships mapped yet. Try asking a question.</p>
+                </div>
+              )}
+            </div>
+          )}
+        </aside>
+      )}
+
       {isMobileHistoryOpen && (
         <>
           <button
@@ -691,6 +801,18 @@ const SearchArea = () => {
             {historyList}
           </div>
         </>
+      )}
+
+      {showProjectGraph && projectGraphData && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm sm:p-10">
+          <div className="h-full w-full max-w-7xl animate-in zoom-in-95 fade-in duration-300">
+            <LegalKnowledgeGraph 
+              graphData={projectGraphData} 
+              onClose={() => setShowProjectGraph(false)}
+              title="Global Legal Knowledge Graph — Cross-Session Relationship Map"
+            />
+          </div>
+        </div>
       )}
     </section>
   );

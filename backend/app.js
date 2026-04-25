@@ -7,6 +7,7 @@ import adminRoutes from "./routes/adminRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import queryRoutes from "./routes/queryRoutes.js";
 import speechRoutes from "./routes/speechRoutes.js";
+import graphRoutes from "./routes/graphRoutes.js";
 
 validateEnvironment();
 await connectDatabase();
@@ -24,6 +25,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/query", queryRoutes);
 app.use("/api/speech", speechRoutes);
+app.use("/api/graph", graphRoutes);
 
 app.use(errorHandler);
 

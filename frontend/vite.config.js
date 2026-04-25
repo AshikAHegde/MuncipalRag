@@ -8,11 +8,15 @@ export default defineConfig({
     allowedHosts:['.trycloudflare.com'], // allow access from Cloudflare Tunnel
     host: true,            // allow external access (important for tunnel)
     port: 3000,
+    hmr: {
+      overlay: true,
+    },
     proxy: {
       '/api': {
-        target: 'http://localhost:5173',
+        target: 'http://localhost:5000',
         changeOrigin: true,
         secure: false,
+        ws: true,
       },
     },
   },
