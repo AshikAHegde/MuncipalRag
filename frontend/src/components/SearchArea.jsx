@@ -729,14 +729,13 @@ const SearchArea = () => {
         </form>
       </div>
 
-      {/* Graph Sidebar (Right) */}
+      {/* Graph Sidebar (Glass Overlay) */}
       {showSessionGraph && user?.role === 'lawyer' && (
         <aside
-          style={{ width: GRAPH_SIDEBAR_WIDTH }}
-          className="hidden shrink-0 border-l border-[#e6e0d6] bg-cream-100 dark:border-[#355269] dark:bg-[#0f1820] xl:flex xl:flex-col"
+          className="fixed inset-0 z-[100] w-full h-full bg-cream-50/95 dark:bg-[#0b1219]/90 backdrop-blur-3xl animate-in zoom-in-95 duration-300 flex flex-col"
         >
           {sessionGraphData ? (
-            <div className="h-full w-full">
+            <div className="h-full w-full relative">
               <LegalKnowledgeGraph
                 graphData={sessionGraphData}
                 onClose={() => setShowSessionGraph(false)}
@@ -744,7 +743,8 @@ const SearchArea = () => {
               />
             </div>
           ) : (
-            <div className="flex h-full flex-col items-center justify-center p-6 text-center">
+            <div className="flex relative h-full flex-col items-center justify-center p-6 text-center">
+              <button onClick={() => setShowSessionGraph(false)} className="absolute top-4 right-4 p-2 rounded-lg bg-black/20 hover:bg-black/40 text-white/70 hover:text-white transition z-50"><X size={18}/></button>
               {isLoadingSessionGraph ? (
                 <div className="flex flex-col items-center gap-3">
                   <Loader2 size={32} className="animate-spin text-moss-600 dark:text-[#a9d6f7]" />

@@ -202,7 +202,7 @@ const ConflictsGrid = ({ conflicts, domain }) => {
       </div>
 
       {/* Cards grid */}
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
         {conflicts.map((conflict, index) => (
           <IssueCard key={`${conflict.domain}-${conflict.section_number || index}`} conflict={conflict} index={index} />
         ))}
