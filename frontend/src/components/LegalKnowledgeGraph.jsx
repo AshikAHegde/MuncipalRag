@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import cytoscape from 'cytoscape';
 import fcose from 'cytoscape-fcose';
-import { Maximize2, Minimize2, ZoomIn, ZoomOut, RefreshCw, X, FileText, Info } from 'lucide-react';
+import { Maximize2, Minimize2, ZoomIn, ZoomOut, RefreshCw, X, FileText, Info, CheckCircle2 } from 'lucide-react';
 
 cytoscape.use(fcose);
 
@@ -43,6 +43,9 @@ const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Grap
       } else if (node.type === 'session') {
         color = '#8b5cf6';
         shape = 'hexagon';
+      } else if (node.type === 'solution') {
+        color = '#22c55e';
+        shape = 'round-rectangle';
       }
 
       elements.push({
@@ -102,6 +105,14 @@ const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Grap
           }
         },
         {
+          selector: 'node[type="solution"]',
+          style: {
+             'width': '90px',
+             'height': '44px',
+             'text-max-width': '78px',
+          }
+        },
+        {
           selector: 'edge',
           style: {
             'width': 2,
@@ -125,6 +136,26 @@ const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Grap
             'width': 3,
             'opacity': 0.9,
             'label': 'data(type)'
+          }
+        },
+        {
+          selector: 'edge[type="MATCH"]',
+          style: {
+            'line-color': '#38bdf8',
+            'target-arrow-color': '#38bdf8',
+            'width': 3,
+            'opacity': 0.9,
+            'label': 'MATCH'
+          }
+        },
+        {
+          selector: 'edge[type="RESPONSE"]',
+          style: {
+            'line-color': '#22c55e',
+            'target-arrow-color': '#22c55e',
+            'width': 3,
+            'opacity': 0.9,
+            'label': 'RESPONSE'
           }
         },
         {
@@ -225,6 +256,10 @@ const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Grap
             <span>Raw Citation</span>
           </div>
           <div className="flex items-center gap-2 text-xs">
+            <span className="h-3 w-3 rounded-md bg-emerald-500" />
+            <span>Response / Solution</span>
+          </div>
+          <div className="flex items-center gap-2 text-xs">
             <span className="h-3 w-3 rounded-full bg-purple-500" />
             <span>Chat Session</span>
           </div>
@@ -278,6 +313,14 @@ const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Grap
                        </div>
                      </div>
                    )}
+                   {selectedNode.solution && (
+                     <div className="mb-2">
+                       <p className="text-[10px] font-bold text-emerald-300 uppercase tracking-widest mb-1">Response / Solution</p>
+                       <div className="p-2 rounded bg-emerald-500/10 border border-emerald-500/20 text-[11px] font-medium text-emerald-50">
+                         {selectedNode.solution}
+                       </div>
+                     </div>
+                   )}
                    {selectedNode.source && (
                      <div className="flex items-center gap-2 text-slate-400 mt-2">
                        <FileText size={12}/>
@@ -299,6 +342,17 @@ const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Grap
                    </div>
                    <div className="p-2 rounded bg-blue-500/5">
                      {selectedNode.answer?.substring(0, 200)}...
+                   </div>
+                 </>
+               )}
+               {selectedNode.type === 'solution' && (
+                 <>
+                   <div className="flex items-center gap-2 text-emerald-300">
+                     <CheckCircle2 size={12}/>
+                     <span>Attached to: {selectedNode.section || 'Conflict'}</span>
+                   </div>
+                   <div className="p-2 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-50">
+                     {selectedNode.solution}
                    </div>
                  </>
                )}

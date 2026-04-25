@@ -145,6 +145,17 @@ const IssueCard = ({ conflict, index }) => {
           </div>
         )}
 
+        {conflict.solution && (
+          <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3">
+            <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-300">
+              Response / Solution
+            </p>
+            <p className="text-sm font-medium leading-relaxed text-emerald-50">
+              {conflict.solution}
+            </p>
+          </div>
+        )}
+
         {/* Cross-Domain Impact (NEW) */}
         {conflict.cross_domain_impact && conflict.cross_domain_impact !== 'Standard domain-specific issue.' && (
           <div className="rounded-xl border border-[#a9d6f7]/20 bg-[#a9d6f7]/10 px-4 py-3">
@@ -233,6 +244,38 @@ const getFileNameFromDisposition = (dispositionHeader, fallbackFileName) => {
   const fileNameMatch = dispositionHeader.match(/filename\*?=(?:UTF-8''|\")?([^\";\n]+)/i);
   if (!fileNameMatch?.[1]) return fallbackFileName;
   return decodeURIComponent(fileNameMatch[1]).replace(/\"/g, '').trim() || fallbackFileName;
+};
+
+const getSourceDisplay = (src = {}, index = 0) => {
+  const metadata = src.metadata || {};
+  const page = src.page ?? src.pageNumber ?? metadata.page ?? metadata.pageNumber ?? 'N/A';
+  const section =
+    src.section
+    || src.sectionName
+    || src.section_name
+    || metadata.section
+    || metadata.sectionName
+    || src.title
+    || `Match ${index + 1}`;
+  const sourceName = src.source || src.fileName || src.filename || metadata.source || metadata.fileName || '';
+  const text =
+    src.text
+    || src.snippet
+    || src.content
+    || src.pageContent
+    || src.description
+    || metadata.text
+    || metadata.content
+    || '';
+  const score = typeof src.score === 'number' ? src.score : null;
+
+  return {
+    page,
+    section,
+    sourceName,
+    text: text || 'No source excerpt available for this match.',
+    score,
+  };
 };
 
 // ─── Main AnswerCard component ────────────────────────────────────────────────
@@ -635,15 +678,25 @@ const AnswerCard = ({
 
               {expandedSources && (
                 <div className="mt-3 space-y-2">
-                  {sources.map((src, idx) => (
+                  {sources.map((src, idx) => {
+                    const displaySource = getSourceDisplay(src, idx);
+
+                    return (
                     <div key={idx} className="rounded-lg border border-[#e6e0d6] bg-cream-100 px-3 py-2 text-xs dark:border-[#355269] dark:bg-[#1d3344]">
-                      <div className="mb-1 flex items-center justify-between text-[#6b7280] dark:text-[#a9c3d8]">
-                        <span>{t.page} {src.page}</span>
-                        <span>{src.section}</span>
+                      <div className="mb-1 flex flex-wrap items-center justify-between gap-2 text-[#6b7280] dark:text-[#a9c3d8]">
+                        <span>{t.page} {displaySource.page}</span>
+                        <span className="font-semibold text-[#1a1a1a] dark:text-[#dce8f3]">{displaySource.section}</span>
                       </div>
-                      <p className="text-[#1a1a1a] dark:text-[#dce8f3]">{src.text}</p>
+                      {displaySource.sourceName && (
+                        <p className="mb-1 text-[11px] uppercase tracking-[0.08em] text-[#6b7280] dark:text-[#a9c3d8]">
+                          {displaySource.sourceName}
+                          {displaySource.score != null ? ` - score ${displaySource.score.toFixed(3)}` : ''}
+                        </p>
+                      )}
+                      <p className="whitespace-pre-wrap text-[#1a1a1a] dark:text-[#dce8f3]">{displaySource.text}</p>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 

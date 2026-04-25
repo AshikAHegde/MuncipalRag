@@ -44,7 +44,8 @@ Return JSON with ONLY this shape:
       "section_name": "Cheating",
       "issue_meaning": "1-2 sentence plain-English explanation of what this law covers",
       "why_flagged": "Specific facts from the client report that triggered this section",
-      "consequence": "Exact punishment: imprisonment duration, fine amount, or both"
+      "consequence": "Exact punishment: imprisonment duration, fine amount, or both",
+      "solution": "Specific legal response or next action for this conflict, grounded in the retrieved law"
     }
   ]
 }
@@ -55,6 +56,7 @@ Rules:
 - Do NOT include sections not present in the retrieved legal context
 - Return empty conflicts array if nothing clearly applies
 - Maximum 3 conflicts
+- Each conflict must include its own solution; do not put solutions only in a separate summary
 `;
 
 export const CIVIL_PROMPT = `
@@ -74,7 +76,8 @@ Return JSON with ONLY this shape:
       "section_name": "Compensation for loss",
       "issue_meaning": "1-2 sentence plain-English explanation of what this law covers",
       "why_flagged": "Specific facts from the client report that triggered this provision",
-      "consequence": "Remedy available: damages, injunction, specific performance, etc."
+      "consequence": "Remedy available: damages, injunction, specific performance, etc.",
+      "solution": "Specific legal response or next action for this conflict, grounded in the retrieved law"
     }
   ]
 }
@@ -85,6 +88,7 @@ Rules:
 - Do NOT include sections not present in the retrieved legal context
 - Return empty conflicts array if nothing clearly applies
 - Maximum 3 conflicts
+- Each conflict must include its own solution; do not put solutions only in a separate summary
 `;
 
 export const CORPORATE_PROMPT = `
@@ -104,7 +108,8 @@ Return JSON with ONLY this shape:
       "section_name": "Duties of directors",
       "issue_meaning": "1-2 sentence plain-English explanation of what this law covers",
       "why_flagged": "Specific facts from the client report that triggered this provision",
-      "consequence": "Penalty, disqualification, fine, or other corporate consequence"
+      "consequence": "Penalty, disqualification, fine, or other corporate consequence",
+      "solution": "Specific legal response or next action for this conflict, grounded in the retrieved law"
     }
   ]
 }
@@ -115,6 +120,7 @@ Rules:
 - Do NOT include sections not present in the retrieved legal context
 - Return empty conflicts array if nothing clearly applies
 - Maximum 3 conflicts
+- Each conflict must include its own solution; do not put solutions only in a separate summary
 `;
 
 export const TAX_PROMPT = `
@@ -134,7 +140,8 @@ Return JSON with ONLY this shape:
       "section_name": "Wilful attempt to evade tax",
       "issue_meaning": "1-2 sentence plain-English explanation of what this law covers",
       "why_flagged": "Specific facts from the client report that triggered this section",
-      "consequence": "Prosecution, imprisonment duration, penalty amount, or both"
+      "consequence": "Prosecution, imprisonment duration, penalty amount, or both",
+      "solution": "Specific legal response or next action for this conflict, grounded in the retrieved law"
     }
   ]
 }
@@ -145,6 +152,7 @@ Rules:
 - Do NOT include sections not present in the retrieved legal context
 - Return empty conflicts array if nothing clearly applies
 - Maximum 3 conflicts
+- Each conflict must include its own solution; do not put solutions only in a separate summary
 `;
 
 export const COMPARISON_PROMPT = `

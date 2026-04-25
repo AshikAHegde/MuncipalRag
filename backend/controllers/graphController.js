@@ -1,6 +1,63 @@
 import UserChat from '../models/UserChat.js';
 import LegalGraph from '../models/LegalGraph.js';
 
+const getConflictSolution = (conflict = {}) =>
+  conflict.solution
+  || conflict.recommended_solution
+  || conflict.response
+  || conflict.recommended_response
+  || '';
+
+const buildSolutionLabel = (solution = '') => {
+  const text = String(solution || '').trim();
+  if (!text) return 'Response / Solution';
+  return text.length > 34 ? `${text.substring(0, 34)}...` : text;
+};
+
+const normalizeGraphText = (value = '') =>
+  String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+const getSectionNumber = (value = '') =>
+  String(value || '').match(/\b\d{2,4}\b/)?.[0] || '';
+
+const getConflictSectionText = (conflict = {}) =>
+  conflict.section || conflict.section_number || conflict.sectionName || conflict.section_name || '';
+
+const findMatchingSourceNode = (sourceNodes = [], conflict = {}) => {
+  const conflictSection = getConflictSectionText(conflict);
+  const conflictNumber = getSectionNumber(conflictSection);
+  const conflictText = normalizeGraphText(conflictSection);
+
+  if (!conflictNumber && !conflictText) {
+    return null;
+  }
+
+  return sourceNodes.find((source) => {
+    const sourceSection = source.section || source.label || '';
+    const sourceText = `${sourceSection} ${source.text || ''}`;
+    const sourceNumber = getSectionNumber(sourceText);
+    const normalizedSourceText = normalizeGraphText(sourceText);
+
+    return (
+      (conflictNumber && sourceNumber === conflictNumber)
+      || (conflictText && normalizedSourceText.includes(conflictText))
+      || (conflictNumber && normalizedSourceText.includes(conflictNumber))
+    );
+  }) || null;
+};
+
+const attachSolutionToSourceNode = (nodes = [], sourceId, solution, sectionLabel) => {
+  if (!sourceId || !solution) return;
+  const sourceNode = nodes.find((node) => node.id === sourceId);
+  if (!sourceNode) return;
+
+  sourceNode.data = {
+    ...sourceNode.data,
+    solution,
+    conflictSection: sectionLabel,
+  };
+};
+
 export const getSessionGraph = async (req, res) => {
   try {
     const { sessionId } = req.params;
@@ -63,9 +120,17 @@ export const getSessionGraph = async (req, res) => {
       }
 
       // 3. Add Source Nodes (Sections) and Conflicts
+      const sourceNodes = [];
+
       conv.sources.forEach((src) => {
         const sectionSlug = src.section || `Match-${idx}-${src.page}`;
         const sectionId = `sec-${sectionSlug}`;
+        sourceNodes.push({
+          id: sectionId,
+          section: src.section,
+          label: src.section || 'Cited Section',
+          text: src.text,
+        });
 
         if (!processedSections.has(sectionId)) {
           nodes.push({
@@ -94,7 +159,10 @@ export const getSessionGraph = async (req, res) => {
       if (conv.review?.conflicts && Array.isArray(conv.review.conflicts)) {
         conv.review.conflicts.forEach((conflict, cIdx) => {
           const conflictId = `conflict-${conv._id}-${cIdx}`;
+          const solutionId = `solution-${conv._id}-${cIdx}`;
           const sectionLabel = conflict.section || (conflict.section_number ? `Section ${conflict.section_number}` : `Issue ${cIdx + 1}`);
+          const solution = getConflictSolution(conflict);
+          const matchedSource = findMatchingSourceNode(sourceNodes, conflict);
           
           nodes.push({
             id: conflictId,
@@ -106,7 +174,8 @@ export const getSessionGraph = async (req, res) => {
               sectionName: conflict.section_name,
               meaning: conflict.issue_meaning,
               reason: conflict.why_flagged,
-              consequence: conflict.consequence
+              consequence: conflict.consequence,
+              solution
             }
           });
 
@@ -116,6 +185,47 @@ export const getSessionGraph = async (req, res) => {
             target: conflictId,
             label: 'FLAGGED'
           });
+
+          if (matchedSource) {
+            attachSolutionToSourceNode(nodes, matchedSource.id, solution, sectionLabel);
+            edges.push({
+              id: `e-conflict-match-${conv._id}-${cIdx}`,
+              source: conflictId,
+              target: matchedSource.id,
+              label: 'MATCH',
+              data: { type: 'MATCH' }
+            });
+          }
+
+          if (solution) {
+            nodes.push({
+              id: solutionId,
+              type: 'solution',
+              label: buildSolutionLabel(solution),
+              data: {
+                solution,
+                domain: conflict.domain,
+                section: sectionLabel
+              }
+            });
+
+            edges.push({
+              id: `e-conflict-solution-${conv._id}-${cIdx}`,
+              source: conflictId,
+              target: solutionId,
+              label: 'RESPONSE'
+            });
+
+            if (matchedSource) {
+              edges.push({
+                id: `e-match-solution-${conv._id}-${cIdx}`,
+                source: matchedSource.id,
+                target: solutionId,
+                label: 'RESPONSE',
+                data: { type: 'RESPONSE' }
+              });
+            }
+          }
         });
       }
     });
@@ -295,6 +405,7 @@ export const getMessageConflictGraph = async (req, res) => {
 
     const nodes = [];
     const edges = [];
+    const sourceNodes = [];
     
     // 1. Central Card Node
     nodes.push({
@@ -304,40 +415,17 @@ export const getMessageConflictGraph = async (req, res) => {
       data: { question: message.question, answer: message.answer }
     });
 
-    // 2. Conflict Nodes
-    const conflicts = message.review?.conflicts || [];
-    conflicts.forEach((conflict, idx) => {
-      const conflictId = `conflict-${idx}`;
-      const sectionLabel = conflict.section || (conflict.section_number ? `Section ${conflict.section_number}` : `Provision ${idx + 1}`);
-      
-      nodes.push({
-        id: conflictId,
-        type: 'section',
-        label: sectionLabel,
-        data: {
-          domain: conflict.domain,
-          section: sectionLabel,
-          sectionName: conflict.section_name,
-          meaning: conflict.issue_meaning,
-          reason: conflict.why_flagged,
-          consequence: conflict.consequence
-        }
-      });
-
-      // Edge from Case to Conflict
-      edges.push({
-        id: `e-case-conflict-${idx}`,
-        source: `message-${message._id}`,
-        target: conflictId,
-        label: 'FLAGGED'
-      });
-    });
-
-    // 2b. Add Citation Nodes (Sources)
+    // 2. Add Citation Nodes (Sources / Match boxes)
     const sources = message.sources || [];
     sources.forEach((src, sIdx) => {
       const sectionLabel = src.section || `Source ${sIdx + 1}`;
       const sectionId = `sec-${sectionLabel}-${sIdx}`;
+      sourceNodes.push({
+        id: sectionId,
+        section: src.section,
+        label: sectionLabel,
+        text: src.text,
+      });
 
       nodes.push({
         id: sectionId,
@@ -352,7 +440,6 @@ export const getMessageConflictGraph = async (req, res) => {
         }
       });
 
-      // Edge from Case to Citation
       edges.push({
         id: `e-case-source-${sIdx}`,
         source: `message-${message._id}`,
@@ -361,7 +448,81 @@ export const getMessageConflictGraph = async (req, res) => {
       });
     });
 
-    // 3. Cross-Domain and Inter-Section Links
+    // 3. Conflict Nodes
+    const conflicts = message.review?.conflicts || [];
+    conflicts.forEach((conflict, idx) => {
+      const conflictId = `conflict-${idx}`;
+      const solutionId = `solution-${idx}`;
+      const sectionLabel = conflict.section || (conflict.section_number ? `Section ${conflict.section_number}` : `Provision ${idx + 1}`);
+      const solution = getConflictSolution(conflict);
+      const matchedSource = findMatchingSourceNode(sourceNodes, conflict);
+      
+      nodes.push({
+        id: conflictId,
+        type: 'section',
+        label: sectionLabel,
+        data: {
+          domain: conflict.domain,
+          section: sectionLabel,
+          sectionName: conflict.section_name,
+          meaning: conflict.issue_meaning,
+          reason: conflict.why_flagged,
+          consequence: conflict.consequence,
+          solution
+        }
+      });
+
+      // Edge from Case to Conflict
+      edges.push({
+        id: `e-case-conflict-${idx}`,
+        source: `message-${message._id}`,
+        target: conflictId,
+        label: 'FLAGGED'
+      });
+
+      if (matchedSource) {
+        attachSolutionToSourceNode(nodes, matchedSource.id, solution, sectionLabel);
+        edges.push({
+          id: `e-conflict-match-${idx}`,
+          source: conflictId,
+          target: matchedSource.id,
+          label: 'MATCH',
+          data: { type: 'MATCH' }
+        });
+      }
+
+      if (solution) {
+        nodes.push({
+          id: solutionId,
+          type: 'solution',
+          label: buildSolutionLabel(solution),
+          data: {
+            solution,
+            domain: conflict.domain,
+            section: sectionLabel
+          }
+        });
+
+        edges.push({
+          id: `e-conflict-solution-${idx}`,
+          source: conflictId,
+          target: solutionId,
+          label: 'RESPONSE'
+        });
+
+        if (matchedSource) {
+          edges.push({
+            id: `e-match-solution-${idx}`,
+            source: matchedSource.id,
+            target: solutionId,
+            label: 'RESPONSE',
+            data: { type: 'RESPONSE' }
+          });
+        }
+      }
+    });
+
+    // 4. Cross-Domain and Inter-Section Links
     const sectionIds = conflicts.map(c => c.section || (c.section_number ? `Section ${c.section_number}` : null)).filter(Boolean);
     
     if (sectionIds.length > 0) {

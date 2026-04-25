@@ -23,6 +23,54 @@ const domainAgentMap = {
   tax: taxAgent,
 };
 
+function buildConflictSolution(conflict = {}) {
+  const explicitSolution =
+    conflict.solution
+    || conflict.recommended_solution
+    || conflict.response
+    || conflict.recommended_response
+    || conflict.action_or_punishment;
+
+  if (explicitSolution) {
+    return explicitSolution;
+  }
+
+  const domain = String(conflict.domain || "").toLowerCase();
+  const consequence = conflict.consequence
+    ? ` Possible consequence: ${conflict.consequence}`
+    : "";
+
+  if (domain === "civil") {
+    return `Prepare a civil remedy strategy for this issue, such as damages, injunction, or specific performance where supported by the retrieved provision.${consequence}`;
+  }
+
+  if (domain === "corporate") {
+    return `Review governance/compliance records and prepare corrective filings, board action, or compliance remediation tied to this provision.${consequence}`;
+  }
+
+  if (domain === "tax") {
+    return `Verify the tax records, quantify exposure, and prepare a response or compliance correction under the retrieved tax provision.${consequence}`;
+  }
+
+  if (domain === "criminal") {
+    return `Preserve evidence, map the reported facts to each legal ingredient, and prepare complaint/defence steps for this provision.${consequence}`;
+  }
+
+  return `Review the facts against this provision and prepare the next legal response for this specific conflict.${consequence}`;
+}
+
+function normalizeConflict(item = {}, domain) {
+  const normalized = {
+    ...item,
+    domain: item.domain || domain,
+  };
+
+  return {
+    ...normalized,
+    solution: buildConflictSolution(normalized),
+  };
+}
+
 function fallbackDomainDetection(query) {
   const normalized = String(query || "").toLowerCase();
   const keywordMap = {
@@ -167,7 +215,7 @@ async function runAllDomainAgents({ query, history }) {
 
   // Flatten conflicts, tagging each with its domain
   const conflicts = allDomainAnalyses.flatMap(({ domain, conflicts: items }) =>
-    items.map((item) => ({ ...item, domain })),
+    items.map((item) => normalizeConflict(item, domain)),
   );
 
   return { conflicts, allRetrieved, allDomainAnalyses };
@@ -277,7 +325,10 @@ export async function handleQuery({ query, mode, user = null, history = [] }) {
     || { domain: primaryDomain, conflicts: [] };
 
   // Step 2: Run the "Master Linker" Audit on merged conflicts
-  const auditedConflicts = await runComparisonAgent(query, conflicts);
+  const comparisonConflicts = await runComparisonAgent(query, conflicts);
+  const auditedConflicts = (
+    Array.isArray(comparisonConflicts) ? comparisonConflicts : conflicts
+  ).map((item) => normalizeConflict(item, item.domain));
 
   const lawyerReport = await reportAgent.generate({
     query,

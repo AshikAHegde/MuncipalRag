@@ -20,6 +20,54 @@ function textValue(value) {
   return "";
 }
 
+function hasDisplayableSource(source = {}) {
+  return Boolean(
+    textValue(source.text)
+    || textValue(source.snippet)
+    || textValue(source.content)
+    || textValue(source.pageContent)
+    || textValue(source.section)
+    || textValue(source.source)
+    || textValue(source.metadata?.text)
+    || textValue(source.metadata?.section),
+  );
+}
+
+function normalizeSources(primarySources = [], fallbackSources = []) {
+  const usableSources = toList(primarySources).filter(hasDisplayableSource);
+  const sourceItems = usableSources.length > 0
+    ? usableSources
+    : toList(fallbackSources).filter(hasDisplayableSource);
+
+  return sourceItems.map((source, index) => {
+    const metadata = source.metadata || {};
+
+    return {
+      page: source.page ?? source.pageNumber ?? metadata.page ?? metadata.pageNumber ?? "N/A",
+      section:
+        textValue(source.section)
+        || textValue(source.sectionName)
+        || textValue(source.section_name)
+        || textValue(metadata.section)
+        || `Match ${index + 1}`,
+      text:
+        textValue(source.text)
+        || textValue(source.snippet)
+        || textValue(source.content)
+        || textValue(source.pageContent)
+        || textValue(metadata.text),
+      score: typeof source.score === "number" ? source.score : null,
+      source: textValue(source.source) || textValue(source.fileName) || textValue(metadata.source),
+      domain: textValue(source.domain) || textValue(metadata.domain),
+      keywords: Array.isArray(source.keywords)
+        ? source.keywords
+        : Array.isArray(metadata.keywords)
+          ? metadata.keywords
+          : [],
+    };
+  });
+}
+
 function parseSectionCode(section = "") {
   const match = textValue(section).match(/\b(\d{3,4})\b/);
   return match?.[1] || "";
@@ -360,6 +408,55 @@ function buildSummaryLines(summaryText, sections = []) {
   return lines.slice(0, 3);
 }
 
+function conflictSectionKey(conflict = {}) {
+  return parseSectionCode(conflict.section || conflict.section_number)
+    || textValue(conflict.section || conflict.section_number).toLowerCase();
+}
+
+function buildConflictSolution(conflict = {}, matchedSection = null) {
+  const explicitSolution =
+    textValue(conflict.solution)
+    || textValue(conflict.recommended_solution)
+    || textValue(conflict.response)
+    || textValue(conflict.recommended_response);
+
+  if (explicitSolution) {
+    return explicitSolution;
+  }
+
+  const matchedAction =
+    textValue(matchedSection?.action_or_punishment)
+    || textValue(matchedSection?.result)
+    || textValue(conflict.consequence);
+  const reason = textValue(conflict.why_flagged);
+
+  const parts = [
+    reason ? `Address the facts flagged here: ${pickUpToTwoSentences(reason)}`
+      : "Address this conflict by mapping the reported facts to the retrieved legal ingredients.",
+    matchedAction ? `Expected legal response/remedy: ${matchedAction}.` : "",
+  ].filter(Boolean);
+
+  return parts.join(" ");
+}
+
+function attachSolutionsToConflicts(conflicts = [], sections = []) {
+  const sectionsByKey = new Map(
+    sections
+      .map((section) => [parseSectionCode(section.section) || textValue(section.section).toLowerCase(), section])
+      .filter(([key]) => Boolean(key)),
+  );
+
+  return toList(conflicts).map((conflict) => {
+    const key = conflictSectionKey(conflict);
+    const matchedSection = sectionsByKey.get(key) || null;
+
+    return {
+      ...conflict,
+      solution: buildConflictSolution(conflict, matchedSection),
+    };
+  });
+}
+
 function normalizeFinalSections({ sections = [], fallbackSections = [], query = "", facts = [] }) {
   const fallbackByCode = new Map(
     toList(fallbackSections)
@@ -470,6 +567,7 @@ ${JSON.stringify(domainAnalysis, null, 2)}`,
     finalSummary = `An audit of ${conflictDomains.join(", ")} legal domains identified ${conflicts.length} potential issues. The following sections were flagged as most relevant to the reported facts.`;
   }
   const summaryLines = buildSummaryLines(finalSummary, sectionsToRender);
+  const conflictsWithSolutions = attachSolutionsToConflicts(conflicts, sectionsToRender);
 
   const answerLines = [];
 
@@ -502,8 +600,8 @@ ${JSON.stringify(domainAnalysis, null, 2)}`,
   return {
     answer: answerLines.join("\n"),
     report,
-    conflicts,
-    sources: report.sources || retrieved,
+    conflicts: conflictsWithSolutions,
+    sources: normalizeSources(report.sources, retrieved),
   };
 }
 
