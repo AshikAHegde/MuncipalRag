@@ -41,17 +41,25 @@ const normalizeChatSessions = (sessions = []) =>
     })),
   }));
 
-const SearchArea = () => {
+const SearchArea = ({
+  clientId = null,
+  clientName = '',
+  initialQuery = '',
+  autoSubmit = false,
+  singleRun = false,
+}) => {
   const { user } = useAuth();
+  const isSingleRun = singleRun || Boolean(clientId);
   const [query, setQuery] = useState('');
-  const [mode, setMode] = useState(user?.role === 'lawyer' ? 'lawyer' : 'general');
+  const [hasAutoSubmitted, setHasAutoSubmitted] = useState(false);
+  const [mode, setMode] = useState(() => (isSingleRun && user?.role === 'lawyer' ? 'lawyer' : 'general'));
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [error, setError] = useState(null);
   const [chatSessions, setChatSessions] = useState([]);
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [lastSubmittedQuery, setLastSubmittedQuery] = useState('');
-  const [lastSubmittedMode, setLastSubmittedMode] = useState(user?.role === 'lawyer' ? 'lawyer' : 'general');
+  const [lastSubmittedMode, setLastSubmittedMode] = useState(() => (isSingleRun && user?.role === 'lawyer' ? 'lawyer' : 'general'));
   const [isMobileHistoryOpen, setIsMobileHistoryOpen] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState(() => {
     if (typeof window === 'undefined') return DEFAULT_LANGUAGE;
@@ -91,10 +99,15 @@ const SearchArea = () => {
   }, [mode, activeSessionId]);
 
   useEffect(() => {
-    if (user?.role !== 'lawyer' && mode === 'lawyer') {
+    if (!isSingleRun && mode !== 'general') {
+      setMode('general');
+      return;
+    }
+
+    if (isSingleRun && user?.role !== 'lawyer' && mode === 'lawyer') {
       setMode('general');
     }
-  }, [mode, user?.role]);
+  }, [isSingleRun, mode, user?.role]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -150,20 +163,24 @@ const SearchArea = () => {
       try {
         setIsLoadingHistory(true);
         const response = await api.get('/api/query/history', {
-          params: { language: selectedLanguage },
+          params: { language: selectedLanguage, ...(clientId ? { clientId } : {}) },
         });
 
         if (!isCancelled) {
           const sessions = normalizeChatSessions(response.data.chatSessions || []);
-          setChatSessions(sessions);
+          const visibleSessions = isSingleRun
+            ? sessions
+            : sessions.filter((session) => normalizeMode(session.mode) === 'general');
+
+          setChatSessions(visibleSessions);
           setActiveSessionId((currentActiveSessionId) =>
-            sessions.some((session) => session.id === currentActiveSessionId)
+            visibleSessions.some((session) => session.id === currentActiveSessionId)
               ? currentActiveSessionId
-              : (sessions[sessions.length - 1]?.id || null),
+              : (visibleSessions[visibleSessions.length - 1]?.id || null),
           );
 
-          if (sessions.length > 0 && !activeSessionId) {
-            setMode(sessions[sessions.length - 1].mode || 'general');
+          if (visibleSessions.length > 0 && !activeSessionId) {
+            setMode(isSingleRun ? (visibleSessions[visibleSessions.length - 1].mode || 'general') : 'general');
           }
         }
       } catch (historyError) {
@@ -182,7 +199,7 @@ const SearchArea = () => {
     return () => {
       isCancelled = true;
     };
-  }, [selectedLanguage]);
+  }, [selectedLanguage, clientId]);
 
   useEffect(() => {
     if (!chatViewportRef.current) return;
@@ -245,7 +262,7 @@ const SearchArea = () => {
             ? remaining.sort((a, b) => new Date(b.lastAskedAt || 0) - new Date(a.lastAskedAt || 0))[0]
             : null;
           setActiveSessionId(next?.id || null);
-          if (next) setMode(next.mode || 'general');
+          if (next) setMode(isSingleRun ? (next.mode || 'general') : 'general');
         }
         return remaining;
       });
@@ -264,8 +281,9 @@ const SearchArea = () => {
     setSpeechError('');
     setVoiceDraftNotice('');
     setLastSubmittedQuery('');
-    setLastSubmittedMode(nextMode);
-    setMode(nextMode);
+    const effectiveMode = isSingleRun ? nextMode : 'general';
+    setLastSubmittedMode(effectiveMode);
+    setMode(effectiveMode);
     setIsMobileHistoryOpen(false);
     inputRef.current?.focus();
   };
@@ -293,9 +311,10 @@ const SearchArea = () => {
     if (!questionToAsk.trim() || isLoading) return;
 
     const trimmedQuestion = questionToAsk.trim();
+    const effectiveMode = isSingleRun ? selectedMode : 'general';
     const canAppendToActiveSession =
       activeSession
-      && (activeSession.mode || 'general') === selectedMode
+      && (activeSession.mode || 'general') === effectiveMode
       && (activeSession.language || DEFAULT_LANGUAGE) === selectedLanguage;
     const history = canAppendToActiveSession
       ? activeMessages.flatMap((message) => [
@@ -305,18 +324,19 @@ const SearchArea = () => {
       : [];
 
     setLastSubmittedQuery(trimmedQuestion);
-    setLastSubmittedMode(selectedMode);
+    setLastSubmittedMode(effectiveMode);
 
     try {
       setIsLoading(true);
       setError(null);
 
       const payload = {
-        mode: selectedMode,
+        mode: effectiveMode,
         query: trimmedQuestion,
         history,
         language: selectedLanguage,
         sessionId: canAppendToActiveSession ? activeSession.id : undefined,
+        clientId: clientId || undefined,
       };
 
       const response = await api.post('/api/query', payload);
@@ -328,7 +348,7 @@ const SearchArea = () => {
       if (nextSession) {
         upsertChatSession(nextSession);
         setActiveSessionId(nextSession.id);
-        setMode(nextSession.mode || selectedMode);
+        setMode(isSingleRun ? (nextSession.mode || effectiveMode) : 'general');
       }
 
       setQuery('');
@@ -346,6 +366,17 @@ const SearchArea = () => {
     setVoiceDraftNotice('');
     await askQuestion(query, mode);
   };
+
+  useEffect(() => {
+    if (autoSubmit && initialQuery && !hasAutoSubmitted && !isLoadingHistory && !isLoading) {
+      if (chatSessions.length === 0) {
+        setHasAutoSubmitted(true);
+        askQuestion(initialQuery, 'lawyer'); // Force lawyer mode for client analysis
+      } else {
+        setHasAutoSubmitted(true); // Don't auto-submit if they already have chats
+      }
+    }
+  }, [autoSubmit, initialQuery, hasAutoSubmitted, isLoadingHistory, isLoading, chatSessions.length]);
 
   const stopMediaStream = () => {
     if (!mediaStreamRef.current) return;
@@ -441,14 +472,16 @@ const SearchArea = () => {
 
   const historyList = (
     <div className="space-y-2">
-      <button
-        type="button"
-        onClick={() => startNewChat(mode)}
-        className="premium-btn-primary flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium"
-      >
-        <Plus size={15} />
-        {t.newChat}
-      </button>
+      {!isSingleRun && (
+        <button
+          type="button"
+          onClick={() => startNewChat(mode)}
+          className="premium-btn-primary flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium"
+        >
+          <Plus size={15} />
+          {t.newChat}
+        </button>
+      )}
 
       {isLoadingHistory ? (
         <div className="flex items-center gap-2 rounded-lg border border-[#e6e0d6] bg-cream-100 px-3 py-2 text-sm text-[#6b7280] dark:border-[#355269] dark:bg-[#1b2c3a] dark:text-[#a9c3d8]">
@@ -486,7 +519,7 @@ const SearchArea = () => {
               >
                 <div className="flex items-start justify-between gap-2">
                   <p className="min-w-0 flex-1 truncate text-sm font-semibold text-[#1a1a1a] dark:text-[#dce8f3]">
-                    {session.title || `Chat ${index + 1}`}
+                    {session.title || (clientName ? `${clientName} Analysis ${index + 1}` : `Chat ${index + 1}`)}
                   </p>
                   <span className="shrink-0 text-[11px] uppercase tracking-[0.08em] text-[#6b7280] dark:text-[#a9c3d8]">
                     {session.mode === 'lawyer' ? t.lawyerModeShort : t.generalModeShort}
@@ -520,60 +553,61 @@ const SearchArea = () => {
   return (
     <section className="premium-surface flex h-full min-h-0 w-full flex-1 overflow-hidden rounded-xl dark:border-[#355269] dark:bg-[#1b2c3a]">
       {/* Resizable history sidebar */}
-      <aside
-        style={{ width: sidebarWidth }}
-        className="hidden shrink-0 border-r border-[#e6e0d6] bg-cream-100 px-4 py-4 dark:border-[#355269] dark:bg-[#1b2c3a] lg:flex lg:flex-col"
-      >
-        <div className="mb-4">
-          <p className="text-xs font-medium uppercase tracking-[0.08em] text-[#6b7280] dark:text-[#a9c3d8]">Operator</p>
-          <p className="mt-1 text-sm font-semibold text-[#1a1a1a] dark:text-[#dce8f3]">{user?.fullName}</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            <span className="rounded-full border border-[#d7d1c5] bg-cream-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#6b7280] dark:border-[#355269] dark:bg-[#1d3344] dark:text-[#a9c3d8]">
-              {user?.role}
-            </span>
-            {user?.domain && (
-              <span className="rounded-full border border-[#c5dff3] bg-[#e8f3fb] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-moss-700 dark:border-[#4f7391] dark:bg-[#1d3344] dark:text-[#a9d6f7]">
-                {user.domain}
+      {!isSingleRun && (
+        <aside
+          style={{ width: sidebarWidth }}
+          className="hidden shrink-0 border-r border-[#e6e0d6] bg-cream-100 px-4 py-4 dark:border-[#355269] dark:bg-[#1b2c3a] lg:flex lg:flex-col"
+        >
+          <div className="mb-4">
+            <p className="text-xs font-medium uppercase tracking-[0.08em] text-[#6b7280] dark:text-[#a9c3d8]">Operator</p>
+            <p className="mt-1 text-sm font-semibold text-[#1a1a1a] dark:text-[#dce8f3]">{user?.fullName}</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <span className="rounded-full border border-[#d7d1c5] bg-cream-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#6b7280] dark:border-[#355269] dark:bg-[#1d3344] dark:text-[#a9c3d8]">
+                General
               </span>
-            )}
+            </div>
           </div>
-        </div>
-        {historyList}
-      </aside>
+          {historyList}
+        </aside>
+      )}
 
       {/* Resize handle */}
-      <div
-        onMouseDown={(e) => {
-          isDraggingRef.current = true;
-          dragStartXRef.current = e.clientX;
-          dragStartWidthRef.current = sidebarWidth;
-          document.body.style.cursor = 'col-resize';
-          document.body.style.userSelect = 'none';
-        }}
-        className="group hidden w-1.5 shrink-0 cursor-col-resize items-center justify-center transition-colors hover:bg-moss-100 dark:hover:bg-[#26465d] lg:flex"
-        title="Drag to resize"
-      >
-        <div className="h-8 w-0.5 rounded-full bg-[#d8d1c5] opacity-0 transition-opacity group-hover:opacity-100 dark:bg-[#355269]" />
-      </div>
+      {!isSingleRun && (
+        <div
+          onMouseDown={(e) => {
+            isDraggingRef.current = true;
+            dragStartXRef.current = e.clientX;
+            dragStartWidthRef.current = sidebarWidth;
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+          }}
+          className="group hidden w-1.5 shrink-0 cursor-col-resize items-center justify-center transition-colors hover:bg-moss-100 dark:hover:bg-[#26465d] lg:flex"
+          title="Drag to resize"
+        >
+          <div className="h-8 w-0.5 rounded-full bg-[#d8d1c5] opacity-0 transition-opacity group-hover:opacity-100 dark:bg-[#355269]" />
+        </div>
+      )}
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <header className="flex h-14 shrink-0 items-center justify-between border-b border-[#e6e0d6] bg-cream-50 px-4 dark:border-[#355269] dark:bg-[#1b2c3a]">
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setIsMobileHistoryOpen(true)}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[#e2ddd4] text-[#6b7280] lg:hidden dark:border-[#355269] dark:text-[#a9c3d8]"
-            >
-              <History size={15} />
-            </button>
+            {!isSingleRun && (
+              <button
+                type="button"
+                onClick={() => setIsMobileHistoryOpen(true)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[#e2ddd4] text-[#6b7280] lg:hidden dark:border-[#355269] dark:text-[#a9c3d8]"
+              >
+                <History size={15} />
+              </button>
+            )}
             <div className="min-w-0">
               <h2 className="truncate text-sm font-semibold text-[#1a1a1a] dark:text-[#dce8f3]">
-                {activeSession?.title || t.newChat}
+                {activeSession?.title || (clientName ? `${clientName} Analysis` : t.newChat)}
               </h2>
               <p className="truncate text-xs text-[#6b7280] dark:text-[#a9c3d8]">
                 {activeSession
-                  ? `${activeSession.mode === 'lawyer' ? t.lawyerModeShort : t.generalModeShort} · ${t.conversations(activeSession.conversationCount)}`
-                  : 'General guidance or lawyer analysis'}
+                  ? (isSingleRun ? 'One-time client analysis' : `${activeSession.mode === 'lawyer' ? t.lawyerModeShort : t.generalModeShort} · ${t.conversations(activeSession.conversationCount)}`)
+                  : (isSingleRun ? 'One-time client analysis' : 'General legal Q&A')}
               </p>
             </div>
           </div>
@@ -592,28 +626,32 @@ const SearchArea = () => {
                 ))}
               </select>
             </label>
-            <button
-              type="button"
-              onClick={() => startNewChat(user?.role === 'lawyer' ? 'lawyer' : 'general')}
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#e2ddd4] px-2.5 text-sm text-[#6b7280] transition hover:bg-moss-50 dark:border-[#355269] dark:text-[#a9c3d8] dark:hover:bg-[#1d3344]"
-              title={t.newButton}
-            >
-              <Plus size={14} />
-              <span className="hidden md:inline">{t.newButton}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleModeSwitch('general')}
-              className={`inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-sm transition ${mode === 'general'
-                  ? 'premium-btn-primary'
-                  : 'premium-btn-secondary dark:text-[#a9c3d8] dark:hover:bg-[#1d3344]'
-                }`}
-              title={t.generalModeShort}
-            >
-              <MessageSquareText size={14} />
-              <span className="hidden sm:inline">{t.generalModeShort}</span>
-            </button>
-            {user?.role === 'lawyer' && (
+            {!isSingleRun && (
+              <button
+                type="button"
+                onClick={() => startNewChat('general')}
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#e2ddd4] px-2.5 text-sm text-[#6b7280] transition hover:bg-moss-50 dark:border-[#355269] dark:text-[#a9c3d8] dark:hover:bg-[#1d3344]"
+                title={t.newButton}
+              >
+                <Plus size={14} />
+                <span className="hidden md:inline">{t.newButton}</span>
+              </button>
+            )}
+            {!isSingleRun && (
+              <button
+                type="button"
+                onClick={() => handleModeSwitch('general')}
+                className={`inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-sm transition ${mode === 'general'
+                    ? 'premium-btn-primary'
+                    : 'premium-btn-secondary dark:text-[#a9c3d8] dark:hover:bg-[#1d3344]'
+                  }`}
+                title={t.generalModeShort}
+              >
+                <MessageSquareText size={14} />
+                <span className="hidden sm:inline">{t.generalModeShort}</span>
+              </button>
+            )}
+            {!isSingleRun && user?.role === 'lawyer' && (
               <button
                 type="button"
                 onClick={() => handleModeSwitch('lawyer')}
@@ -627,7 +665,7 @@ const SearchArea = () => {
                 <span className="hidden sm:inline">{t.lawyerModeShort}</span>
               </button>
             )}
-            {user?.role === 'lawyer' && (
+            {isSingleRun && user?.role === 'lawyer' && (
               <button
                 type="button"
                 onClick={() => setShowSessionGraph(!showSessionGraph)}
@@ -649,11 +687,15 @@ const SearchArea = () => {
           {activeMessages.length === 0 && !isLoading && !error && (
             <div className="premium-card mx-auto mt-8 max-w-xl rounded-xl p-6 text-center">
               <h3 className="text-lg font-semibold text-[#1a1a1a] dark:text-[#dce8f3]">
-                {activeSession ? t.welcomeExisting : (mode === 'lawyer' ? 'Start a lawyer-mode analysis' : t.welcomeNew)}
+                {activeSession
+                  ? t.welcomeExisting
+                  : isSingleRun
+                    ? `${clientName || 'Client'} analysis`
+                    : t.welcomeNew}
               </h3>
               <p className="mt-2 text-sm text-[#6b7280] dark:text-[#a9c3d8]">
-                {mode === 'lawyer'
-                  ? 'Paste a client report to trigger domain-filtered retrieval, legal comparison, and a structured issue report.'
+                {isSingleRun
+                  ? 'The saved case background will be analyzed once and kept with this client workspace.'
                   : 'Ask for a simple legal explanation. The orchestrator will infer the most relevant domain and retrieve only grounded legal text.'}
               </p>
             </div>
@@ -701,81 +743,83 @@ const SearchArea = () => {
           </div>
         </div>
 
-        <form onSubmit={handleSearch} className="shrink-0 border-t border-[#e6e0d6] bg-cream-50 px-4 py-3 dark:border-[#355269] dark:bg-[#1b2c3a]">
-          <div className="mx-auto max-w-3xl">
-            <div className="mb-2 sm:hidden">
-              <label className="flex items-center justify-between rounded-lg border border-[#e2ddd4] px-3 py-2 text-sm text-[#6b7280] dark:border-[#355269] dark:text-[#a9c3d8]">
-                <span>{t.language}</span>
-                <select
-                  value={selectedLanguage}
-                  onChange={(event) => setSelectedLanguage(event.target.value)}
-                  className="bg-transparent text-sm outline-none"
+        {!isSingleRun && (
+          <form onSubmit={handleSearch} className="shrink-0 border-t border-[#e6e0d6] bg-cream-50 px-4 py-3 dark:border-[#355269] dark:bg-[#1b2c3a]">
+            <div className="mx-auto max-w-3xl">
+              <div className="mb-2 sm:hidden">
+                <label className="flex items-center justify-between rounded-lg border border-[#e2ddd4] px-3 py-2 text-sm text-[#6b7280] dark:border-[#355269] dark:text-[#a9c3d8]">
+                  <span>{t.language}</span>
+                  <select
+                    value={selectedLanguage}
+                    onChange={(event) => setSelectedLanguage(event.target.value)}
+                    className="bg-transparent text-sm outline-none"
+                  >
+                    {LANGUAGE_OPTIONS.map((option) => (
+                      <option key={option.code} value={option.code} className="text-black">
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="premium-input flex items-end gap-2 rounded-xl p-2 dark:bg-[#1b2c3a]">
+                {mode === 'lawyer' ? (
+                  <textarea
+                    ref={inputRef}
+                    rows={3}
+                    value={query}
+                    onChange={(event) => {
+                      setQuery(event.target.value);
+                      setVoiceDraftNotice('');
+                    }}
+                    placeholder={t.lawyerPlaceholder}
+                    disabled={isLoading}
+                    className="max-h-44 min-h-20 flex-1 resize-y border-0 bg-transparent px-2 py-1 text-sm text-[#1a1a1a] outline-none placeholder:text-[#8a8f99] disabled:opacity-50 dark:text-[#dce8f3] dark:placeholder:text-[#95afc4]"
+                  />
+                ) : (
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    value={query}
+                    onChange={(event) => {
+                      setQuery(event.target.value);
+                      setVoiceDraftNotice('');
+                    }}
+                    placeholder={t.generalPlaceholder}
+                    disabled={isLoading}
+                    className="h-10 flex-1 border-0 bg-transparent px-2 text-sm text-[#1a1a1a] outline-none placeholder:text-[#8a8f99] disabled:opacity-50 dark:text-[#dce8f3] dark:placeholder:text-[#95afc4]"
+                  />
+                )}
+
+                <button
+                  type="button"
+                  onClick={toggleVoiceInput}
+                  disabled={!isSpeechSupported || isLoading || isTranscribing}
+                  className={`inline-flex h-10 w-10 items-center justify-center rounded-lg border transition ${isRecording
+                      ? 'border-rose-300 bg-rose-50 text-rose-600 dark:border-rose-500/40 dark:bg-rose-500/15 dark:text-rose-300'
+                      : 'border-[#cfdfec] bg-cream-50 text-[#6b7280] hover:bg-moss-50 dark:border-[#355269] dark:bg-[#1b2c3a] dark:text-[#a9c3d8] dark:hover:bg-[#1d3344]'
+                    } disabled:opacity-50`}
+                  aria-label={isRecording ? 'Stop recording' : 'Start voice input'}
                 >
-                  {LANGUAGE_OPTIONS.map((option) => (
-                    <option key={option.code} value={option.code} className="text-black">
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  {isRecording ? <MicOff size={15} /> : <Mic size={15} />}
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={!query.trim() || isLoading}
+                  className="premium-btn-primary inline-flex h-10 items-center gap-2 rounded-lg px-4 text-sm font-medium transition disabled:opacity-50"
+                >
+                  {isLoading ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}
+                  {t.send}
+                </button>
+              </div>
+
+              {speechError && <p className="mt-2 text-xs text-rose-600 dark:text-rose-400">{speechError}</p>}
+              {voiceDraftNotice && <p className="mt-2 text-xs text-moss-700 dark:text-[#a9d6f7]">{voiceDraftNotice}</p>}
+              {isTranscribing && <p className="mt-2 text-xs text-[#6b7280] dark:text-[#a9c3d8]">{t.transcribing}</p>}
             </div>
-            <div className="premium-input flex items-end gap-2 rounded-xl p-2 dark:bg-[#1b2c3a]">
-              {mode === 'lawyer' ? (
-                <textarea
-                  ref={inputRef}
-                  rows={3}
-                  value={query}
-                  onChange={(event) => {
-                    setQuery(event.target.value);
-                    setVoiceDraftNotice('');
-                  }}
-                  placeholder={t.lawyerPlaceholder}
-                  disabled={isLoading}
-                  className="max-h-44 min-h-20 flex-1 resize-y border-0 bg-transparent px-2 py-1 text-sm text-[#1a1a1a] outline-none placeholder:text-[#8a8f99] disabled:opacity-50 dark:text-[#dce8f3] dark:placeholder:text-[#95afc4]"
-                />
-              ) : (
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={query}
-                  onChange={(event) => {
-                    setQuery(event.target.value);
-                    setVoiceDraftNotice('');
-                  }}
-                  placeholder={t.generalPlaceholder}
-                  disabled={isLoading}
-                  className="h-10 flex-1 border-0 bg-transparent px-2 text-sm text-[#1a1a1a] outline-none placeholder:text-[#8a8f99] disabled:opacity-50 dark:text-[#dce8f3] dark:placeholder:text-[#95afc4]"
-                />
-              )}
-
-              <button
-                type="button"
-                onClick={toggleVoiceInput}
-                disabled={!isSpeechSupported || isLoading || isTranscribing}
-                className={`inline-flex h-10 w-10 items-center justify-center rounded-lg border transition ${isRecording
-                    ? 'border-rose-300 bg-rose-50 text-rose-600 dark:border-rose-500/40 dark:bg-rose-500/15 dark:text-rose-300'
-                    : 'border-[#cfdfec] bg-cream-50 text-[#6b7280] hover:bg-moss-50 dark:border-[#355269] dark:bg-[#1b2c3a] dark:text-[#a9c3d8] dark:hover:bg-[#1d3344]'
-                  } disabled:opacity-50`}
-                aria-label={isRecording ? 'Stop recording' : 'Start voice input'}
-              >
-                {isRecording ? <MicOff size={15} /> : <Mic size={15} />}
-              </button>
-
-              <button
-                type="submit"
-                disabled={!query.trim() || isLoading}
-                className="premium-btn-primary inline-flex h-10 items-center gap-2 rounded-lg px-4 text-sm font-medium transition disabled:opacity-50"
-              >
-                {isLoading ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}
-                {t.send}
-              </button>
-            </div>
-
-            {speechError && <p className="mt-2 text-xs text-rose-600 dark:text-rose-400">{speechError}</p>}
-            {voiceDraftNotice && <p className="mt-2 text-xs text-moss-700 dark:text-[#a9d6f7]">{voiceDraftNotice}</p>}
-            {isTranscribing && <p className="mt-2 text-xs text-[#6b7280] dark:text-[#a9c3d8]">{t.transcribing}</p>}
-          </div>
-        </form>
+          </form>
+        )}
       </div>
 
       {/* Graph Sidebar (Glass Overlay) */}
@@ -811,7 +855,7 @@ const SearchArea = () => {
         </aside>
       )}
 
-      {isMobileHistoryOpen && (
+      {!isSingleRun && isMobileHistoryOpen && (
         <>
           <button
             type="button"

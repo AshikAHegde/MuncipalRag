@@ -158,11 +158,14 @@ export async function queryKnowledgeBase(req, res) {
         ? userChat.chatSessions.id(sessionId)
         : null;
 
+    const clientId = req.body?.clientId?.trim();
+
     if (!targetSession || targetSession.mode !== mode) {
       userChat.chatSessions.push({
         title: createChatSessionTitle(userChat.chatSessions.length),
         mode,
         language,
+        clientId: clientId || null,
         conversations: [],
         createdAt: chatItem.askedAt,
         lastAskedAt: chatItem.askedAt,
@@ -349,10 +352,13 @@ export async function getUserChatHistory(req, res) {
     const language = req.preferredLanguage || "en";
     let userChat = await UserChat.findOne({ userId: req.user._id });
     userChat = await migrateLegacyChats(userChat);
+    
+    const reqClientId = req.query?.clientId;
+
     const normalizedChatSessions = Array.isArray(userChat?.chatSessions)
-      ? userChat.chatSessions.map((session, index) =>
-          normalizeChatSession(session, index),
-        )
+      ? userChat.chatSessions
+          .filter(session => !reqClientId || session.clientId?.toString() === reqClientId)
+          .map((session, index) => normalizeChatSession(session, index))
       : [];
     let chatSessions = normalizedChatSessions;
 

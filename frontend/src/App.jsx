@@ -9,6 +9,8 @@ import LoginPage from './pages/LoginPage.jsx';
 import ProfilePage from './pages/ProfilePage.jsx';
 import SearchPage from './pages/SearchPage.jsx';
 import SignupPage from './pages/SignupPage.jsx';
+import ClientsPage from './pages/ClientsPage.jsx';
+import ClientWorkspacePage from './pages/ClientWorkspacePage.jsx';
 
 function App() {
   const [darkMode, setDarkMode] = useState(true);
@@ -33,6 +35,10 @@ function App() {
             >
               <Route index element={<Navigate to="/dashboard" replace />} />
               <Route path="dashboard" element={<DashboardPage />} />
+              <Route path="clients" element={<ProtectedRoute />}>
+                <Route index element={<ClientsPage />} />
+                <Route path=":clientId" element={<ClientWorkspacePage />} />
+              </Route>
               <Route path="chat" element={<SearchPage />} />
               <Route path="profile" element={<ProfilePage />} />
               <Route path="admin" element={<ProtectedRoute requireAdmin />}>

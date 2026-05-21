@@ -29,6 +29,7 @@ const AppShell = ({ darkMode, onToggleDarkMode }) => {
   const navItems = [
     { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { to: '/chat', label: 'Legal AI', icon: MessageSquareText },
+    ...(user?.role === 'lawyer' ? [{ to: '/clients', label: 'Clients', icon: FileText }] : []),
     { to: '/profile', label: 'Profile', icon: UserCircle2 },
     ...(user?.role === 'admin' ? [{ to: '/admin', label: 'Admin', icon: ShieldCheck }] : []),
   ];

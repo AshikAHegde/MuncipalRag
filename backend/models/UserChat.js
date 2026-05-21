@@ -72,6 +72,12 @@ const chatItemSchema = new mongoose.Schema(
 
 const chatSessionSchema = new mongoose.Schema(
   {
+    clientId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Client",
+      default: null,
+      index: true,
+    },
     title: {
       type: String,
       required: true,
