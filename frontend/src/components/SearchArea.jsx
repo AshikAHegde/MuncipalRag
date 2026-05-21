@@ -648,6 +648,21 @@ const SearchArea = ({
               >
                 <MessageSquareText size={14} />
                 <span className="hidden sm:inline">{t.generalModeShort}</span>
+              </button>
+            )}
+            {user?.role === 'lawyer' && (
+              <button
+                type="button"
+                onClick={() => handleModeSwitch('lawyer')}
+                className={`inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-sm transition ${mode === 'lawyer'
+                    ? 'premium-btn-primary'
+                    : 'premium-btn-secondary dark:text-[#a9c3d8] dark:hover:bg-[#1d3344]'
+                  }`}
+                title={t.lawyerModeShort}
+              >
+                <Search size={14} />
+                <span className="hidden sm:inline">{t.lawyerModeShort}</span>
+              </button>
             )}
             {user?.role === 'lawyer' && (
               <button
