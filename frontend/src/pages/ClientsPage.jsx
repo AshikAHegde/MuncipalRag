@@ -161,23 +161,41 @@ export default function ClientsPage() {
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Full Client / Case Information (Optional)</label>
                   <label className="cursor-pointer text-xs font-bold text-moss-600 dark:text-sky-400 hover:underline">
-                    Upload Text File
+                    Upload Text or PDF File
                     <input 
                       type="file" 
-                      accept=".txt,.md,.csv" 
+                      accept=".txt,.md,.csv,.pdf" 
                       className="hidden" 
-                      onChange={e => {
+                      onChange={async e => {
                         const file = e.target.files?.[0];
                         if (file) {
-                          const reader = new FileReader();
-                          reader.onload = (evt) => {
-                            setNewClient(prev => ({
-                              ...prev,
-                              caseDetails: { ...prev.caseDetails, description: evt.target.result }
-                            }));
-                          };
-                          reader.readAsText(file);
+                          if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+                            try {
+                              const res = await api.post('/api/clients/extract-pdf', file, {
+                                headers: { 'Content-Type': 'application/pdf' }
+                              });
+                              if (res.data.success) {
+                                setNewClient(prev => ({
+                                  ...prev,
+                                  caseDetails: { ...prev.caseDetails, description: prev.caseDetails?.description ? prev.caseDetails.description + '\n\n' + res.data.text : res.data.text }
+                                }));
+                              }
+                            } catch (err) {
+                              console.error("PDF Extraction failed:", err);
+                              alert("Failed to extract text from PDF. " + (err.response?.data?.error || err.message));
+                            }
+                          } else {
+                            const reader = new FileReader();
+                            reader.onload = (evt) => {
+                              setNewClient(prev => ({
+                                ...prev,
+                                caseDetails: { ...prev.caseDetails, description: prev.caseDetails?.description ? prev.caseDetails.description + '\n\n' + evt.target.result : evt.target.result }
+                              }));
+                            };
+                            reader.readAsText(file);
+                          }
                         }
+                        e.target.value = null;
                       }} 
                     />
                   </label>

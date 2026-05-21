@@ -52,14 +52,17 @@ const SearchArea = ({
   const isSingleRun = singleRun || Boolean(clientId);
   const [query, setQuery] = useState('');
   const [hasAutoSubmitted, setHasAutoSubmitted] = useState(false);
-  const [mode, setMode] = useState(() => (isSingleRun && user?.role === 'lawyer' ? 'lawyer' : 'general'));
+  const [mode, setMode] = useState(() => {
+    const savedMode = localStorage.getItem('preferredMode');
+    return (user?.role === 'lawyer' && savedMode === 'lawyer') ? 'lawyer' : 'general';
+  });
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [error, setError] = useState(null);
   const [chatSessions, setChatSessions] = useState([]);
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [lastSubmittedQuery, setLastSubmittedQuery] = useState('');
-  const [lastSubmittedMode, setLastSubmittedMode] = useState(() => (isSingleRun && user?.role === 'lawyer' ? 'lawyer' : 'general'));
+  const [lastSubmittedMode, setLastSubmittedMode] = useState(mode);
   const [isMobileHistoryOpen, setIsMobileHistoryOpen] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState(() => {
     if (typeof window === 'undefined') return DEFAULT_LANGUAGE;
@@ -99,15 +102,13 @@ const SearchArea = ({
   }, [mode, activeSessionId]);
 
   useEffect(() => {
-    if (!isSingleRun && mode !== 'general') {
-      setMode('general');
-      return;
+    if (user?.role === 'lawyer') {
+      localStorage.setItem('preferredMode', mode);
     }
-
-    if (isSingleRun && user?.role !== 'lawyer' && mode === 'lawyer') {
+    if (user?.role !== 'lawyer' && mode === 'lawyer') {
       setMode('general');
     }
-  }, [isSingleRun, mode, user?.role]);
+  }, [mode, user?.role]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -168,9 +169,7 @@ const SearchArea = ({
 
         if (!isCancelled) {
           const sessions = normalizeChatSessions(response.data.chatSessions || []);
-          const visibleSessions = isSingleRun
-            ? sessions
-            : sessions.filter((session) => normalizeMode(session.mode) === 'general');
+          const visibleSessions = sessions;
 
           setChatSessions(visibleSessions);
           setActiveSessionId((currentActiveSessionId) =>
@@ -180,7 +179,7 @@ const SearchArea = ({
           );
 
           if (visibleSessions.length > 0 && !activeSessionId) {
-            setMode(isSingleRun ? (visibleSessions[visibleSessions.length - 1].mode || 'general') : 'general');
+            setMode(visibleSessions[visibleSessions.length - 1].mode || 'general');
           }
         }
       } catch (historyError) {
@@ -262,7 +261,7 @@ const SearchArea = ({
             ? remaining.sort((a, b) => new Date(b.lastAskedAt || 0) - new Date(a.lastAskedAt || 0))[0]
             : null;
           setActiveSessionId(next?.id || null);
-          if (next) setMode(isSingleRun ? (next.mode || 'general') : 'general');
+          if (next) setMode(next.mode || 'general');
         }
         return remaining;
       });
@@ -281,7 +280,7 @@ const SearchArea = ({
     setSpeechError('');
     setVoiceDraftNotice('');
     setLastSubmittedQuery('');
-    const effectiveMode = isSingleRun ? nextMode : 'general';
+    const effectiveMode = nextMode;
     setLastSubmittedMode(effectiveMode);
     setMode(effectiveMode);
     setIsMobileHistoryOpen(false);
@@ -311,7 +310,7 @@ const SearchArea = ({
     if (!questionToAsk.trim() || isLoading) return;
 
     const trimmedQuestion = questionToAsk.trim();
-    const effectiveMode = isSingleRun ? selectedMode : 'general';
+    const effectiveMode = selectedMode;
     const canAppendToActiveSession =
       activeSession
       && (activeSession.mode || 'general') === effectiveMode
@@ -348,7 +347,7 @@ const SearchArea = ({
       if (nextSession) {
         upsertChatSession(nextSession);
         setActiveSessionId(nextSession.id);
-        setMode(isSingleRun ? (nextSession.mode || effectiveMode) : 'general');
+        setMode(nextSession.mode || effectiveMode);
       }
 
       setQuery('');
@@ -626,7 +625,7 @@ const SearchArea = ({
                 ))}
               </select>
             </label>
-            {!isSingleRun && (
+            <div className="flex gap-2">
               <button
                 type="button"
                 onClick={() => startNewChat('general')}
@@ -636,8 +635,8 @@ const SearchArea = ({
                 <Plus size={14} />
                 <span className="hidden md:inline">{t.newButton}</span>
               </button>
-            )}
-            {!isSingleRun && (
+            </div>
+            {user?.role === 'lawyer' && (
               <button
                 type="button"
                 onClick={() => handleModeSwitch('general')}
@@ -649,23 +648,8 @@ const SearchArea = ({
               >
                 <MessageSquareText size={14} />
                 <span className="hidden sm:inline">{t.generalModeShort}</span>
-              </button>
             )}
-            {!isSingleRun && user?.role === 'lawyer' && (
-              <button
-                type="button"
-                onClick={() => handleModeSwitch('lawyer')}
-                className={`inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-sm transition ${mode === 'lawyer'
-                    ? 'premium-btn-primary'
-                    : 'premium-btn-secondary dark:text-[#a9c3d8] dark:hover:bg-[#1d3344]'
-                  }`}
-                title={t.lawyerModeShort}
-              >
-                <Search size={14} />
-                <span className="hidden sm:inline">{t.lawyerModeShort}</span>
-              </button>
-            )}
-            {isSingleRun && user?.role === 'lawyer' && (
+            {user?.role === 'lawyer' && (
               <button
                 type="button"
                 onClick={() => setShowSessionGraph(!showSessionGraph)}

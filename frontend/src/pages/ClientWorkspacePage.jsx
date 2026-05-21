@@ -104,20 +104,39 @@ export default function ClientWorkspacePage() {
                     <FileUp size={14} /> Upload File
                     <input 
                       type="file" 
-                      accept=".txt,.md,.csv" 
+                      accept=".txt,.md,.csv,.pdf" 
                       className="hidden" 
-                      onChange={e => {
+                      onChange={async e => {
                         const file = e.target.files?.[0];
                         if (file) {
-                          const reader = new FileReader();
-                          reader.onload = (evt) => {
-                            setClient(prev => ({
-                              ...prev,
-                              caseDetails: { ...prev.caseDetails, description: evt.target.result }
-                            }));
-                          };
-                          reader.readAsText(file);
+                          if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+                            try {
+                              // We might want to show a loading state here in a real app
+                              const res = await api.post('/api/clients/extract-pdf', file, {
+                                headers: { 'Content-Type': 'application/pdf' }
+                              });
+                              if (res.data.success) {
+                                setClient(prev => ({
+                                  ...prev,
+                                  caseDetails: { ...prev.caseDetails, description: prev.caseDetails?.description ? prev.caseDetails.description + '\n\n' + res.data.text : res.data.text }
+                                }));
+                              }
+                            } catch (err) {
+                              console.error("PDF Extraction failed:", err);
+                              alert("Failed to extract text from PDF. " + (err.response?.data?.error || err.message));
+                            }
+                          } else {
+                            const reader = new FileReader();
+                            reader.onload = (evt) => {
+                              setClient(prev => ({
+                                ...prev,
+                                caseDetails: { ...prev.caseDetails, description: prev.caseDetails?.description ? prev.caseDetails.description + '\n\n' + evt.target.result : evt.target.result }
+                              }));
+                            };
+                            reader.readAsText(file);
+                          }
                         }
+                        e.target.value = null;
                       }} 
                     />
                   </label>

@@ -1,6 +1,7 @@
 import Client from '../models/Client.js';
 import UserChat from '../models/UserChat.js';
 import Document from '../models/Document.js';
+import { extractTextFromPdfBuffer } from '../services/ragService.js';
 
 export const getClients = async (req, res) => {
   try {
@@ -65,3 +66,24 @@ export const updateClient = async (req, res) => {
   }
 };
 
+export const extractPdfText = async (req, res) => {
+  try {
+    const fileBuffer = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+    
+    if (!fileBuffer.length) {
+      return res.status(400).json({ success: false, error: 'Please upload a PDF file.' });
+    }
+
+    const mimeType = req.headers['content-type'] || '';
+    if (!mimeType.startsWith('application/pdf')) {
+      return res.status(400).json({ success: false, error: 'Only PDF files are allowed.' });
+    }
+
+    const extractedText = await extractTextFromPdfBuffer(fileBuffer);
+    
+    res.json({ success: true, text: extractedText });
+  } catch (error) {
+    console.error('Error extracting PDF text:', error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to extract text from PDF.' });
+  }
+};

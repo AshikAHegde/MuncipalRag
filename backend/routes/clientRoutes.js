@@ -4,12 +4,22 @@ import {
   getClients, 
   getClientById, 
   createClient, 
-  updateClient
+  updateClient,
+  extractPdfText
 } from '../controllers/clientController.js';
 
 const router = express.Router();
 
 router.use(protect); // All client routes require authentication
+
+router.post(
+  '/extract-pdf',
+  express.raw({
+    type: 'application/pdf',
+    limit: '20mb',
+  }),
+  extractPdfText
+);
 
 router.route('/')
   .get(getClients)

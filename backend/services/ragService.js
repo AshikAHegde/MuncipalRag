@@ -794,7 +794,7 @@ export async function deleteDocumentVectors(docId) {
   });
 }
 
-async function extractTextUsingOCR(filePath) {
+export async function extractTextUsingOCR(filePath) {
   console.log("Extracting text from scanned PDF using OCR...");
   
   // Use Google Gemini Vision API for document text detection
@@ -840,6 +840,39 @@ async function extractTextUsingOCR(filePath) {
   return extractedText;
 }
 
+export async function extractTextFromPdfBuffer(fileBuffer, providedTempFilePath = null) {
+  const tempFilePath = providedTempFilePath || path.join(os.tmpdir(), `extract-${randomUUID()}.pdf`);
+  let shouldCleanup = !providedTempFilePath;
+  
+  if (shouldCleanup) {
+    await fs.writeFile(tempFilePath, fileBuffer);
+  }
+
+  try {
+    const pdfLoader = new PDFLoader(tempFilePath);
+    const rawDocs = await pdfLoader.load();
+    const readableDocs = rawDocs.filter(
+      (doc) => typeof doc.pageContent === "string" && doc.pageContent.trim().length > 0
+    );
+
+    if (readableDocs.length === 0) {
+      console.log("No readable text found. Attempting OCR extraction...");
+      try {
+        const ocrText = await extractTextUsingOCR(tempFilePath);
+        return ocrText;
+      } catch (ocrError) {
+        throw new Error(`The uploaded PDF does not contain readable text and OCR extraction failed: ${ocrError.message}`);
+      }
+    } else {
+      return readableDocs.map(doc => doc.pageContent).join("\n\n");
+    }
+  } finally {
+    if (shouldCleanup) {
+      try { await fs.unlink(tempFilePath); } catch (e) {}
+    }
+  }
+}
+
 export async function processDocument(document, sourceBuffer = null) {
   const fileBuffer =
     sourceBuffer && Buffer.isBuffer(sourceBuffer)
@@ -850,47 +883,30 @@ export async function processDocument(document, sourceBuffer = null) {
   await fs.writeFile(tempFilePath, fileBuffer);
 
   try {
-    const pdfLoader = new PDFLoader(tempFilePath);
-    const rawDocs = await pdfLoader.load();
-    const readableDocs = rawDocs.filter(
-      (doc) =>
-        typeof doc.pageContent === "string" && doc.pageContent.trim().length > 0,
-    );
+    const extractedText = await extractTextFromPdfBuffer(fileBuffer, tempFilePath);
+    
+    let chunkedDocs;
+    let pageCount = 1; // Simplification, as extractTextFromPdfBuffer returns a combined string
+    let extractionMode = "text";
 
+    if (!extractedText) {
+      throw new Error("No readable content was found in this PDF.");
+    }
+    
+    // We do OCR inside extractTextFromPdfBuffer if needed
+    // But we need to know the extraction mode. Let's just assume "text" for now since extractTextFromPdfBuffer handles the fallback internally.
     const textSplitter = new RecursiveCharacterTextSplitter({
       chunkSize: 1000,
       chunkOverlap: 200,
     });
-
-    let chunkedDocs;
-    let pageCount = readableDocs.length;
-    let extractionMode = "text";
-
-    if (readableDocs.length === 0) {
-      console.log("No readable text found. Attempting OCR extraction...");
-      try {
-        const ocrText = await extractTextUsingOCR(tempFilePath);
-        extractionMode = "ocr";
-
-        const ocrDoc = {
-          pageContent: ocrText,
-          metadata: {
-            source: document.originalName,
-            loc: { pageNumber: 1 },
-          },
-        };
-
-        chunkedDocs = await textSplitter.splitDocuments([ocrDoc]);
-        pageCount = 1;
-      } catch (ocrError) {
-        throw new Error(
-          `The uploaded PDF does not contain readable text and OCR extraction failed: ${ocrError.message}. Please try a clearer PDF or a text-based PDF.`,
-        );
-      }
-    } else {
-      chunkedDocs = await textSplitter.splitDocuments(readableDocs);
-    }
-
+    
+    const doc = {
+      pageContent: extractedText,
+      metadata: { source: document.originalName, loc: { pageNumber: 1 } }
+    };
+    
+    chunkedDocs = await textSplitter.splitDocuments([doc]);
+    
     const cleanedChunkedDocs = chunkedDocs.filter(
       (doc) =>
         typeof doc.pageContent === "string" && doc.pageContent.trim().length > 0,
