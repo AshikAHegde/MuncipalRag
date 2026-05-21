@@ -784,13 +784,14 @@ const SearchArea = () => {
           className="fixed inset-0 z-[100] w-full h-full bg-cream-50/95 dark:bg-[#0b1219]/90 backdrop-blur-3xl animate-in zoom-in-95 duration-300 flex flex-col"
         >
           {sessionGraphData ? (
-            <div className="h-full w-full relative">
-              <LegalKnowledgeGraph
-                graphData={sessionGraphData}
-                onClose={() => setShowSessionGraph(false)}
-                title={`Insights: ${activeSession?.title || 'Selected Chat'}`}
-              />
-            </div>
+              <div className="h-full w-full relative">
+                <LegalKnowledgeGraph
+                  graphData={sessionGraphData}
+                  onClose={() => setShowSessionGraph(false)}
+                  title={`Insights: ${activeSession?.title || 'Selected Chat'}`}
+                  clientContext={activeSession?.previewQuestion || ''}
+                />
+              </div>
           ) : (
             <div className="flex relative h-full flex-col items-center justify-center p-6 text-center">
               <button onClick={() => setShowSessionGraph(false)} className="absolute top-4 right-4 p-2 rounded-lg bg-black/20 hover:bg-black/40 text-white/70 hover:text-white transition z-50"><X size={18}/></button>

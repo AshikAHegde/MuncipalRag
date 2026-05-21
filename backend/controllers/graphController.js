@@ -514,3 +514,21 @@ export const getMessageConflictGraph = async (req, res) => {
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 };
+
+export const postNodeChat = async (req, res) => {
+  try {
+    const { question, nodeData, clientContext, history } = req.body;
+    
+    if (!question || !nodeData) {
+      return res.status(400).json({ success: false, error: 'Question and node data are required.' });
+    }
+
+    const { handleNodeChat } = await import('../services/tempChatAgent.js');
+    const answer = await handleNodeChat({ question, nodeData, clientContext, history });
+
+    res.json({ success: true, answer });
+  } catch (error) {
+    console.error('Error in postNodeChat:', error);
+    res.status(500).json({ success: false, error: 'Internal server error during node chat.' });
+  }
+};

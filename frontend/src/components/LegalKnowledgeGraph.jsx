@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import ForceGraph3D from 'react-force-graph-3d';
 import SpriteText from 'three-spritetext';
 import * as THREE from 'three';
-import { Maximize2, Minimize2, ZoomIn, ZoomOut, RefreshCw, X, FileText, Info, Play, Pause, Type } from 'lucide-react';
+import { Maximize2, Minimize2, ZoomIn, ZoomOut, RefreshCw, X, FileText, Info, Play, Pause, Type, Send, Loader2 } from 'lucide-react';
+import api from '../lib/api.js';
 
 const DOMAIN_COLORS = {
   criminal: '#f43f5e', // rose-500
@@ -12,7 +13,7 @@ const DOMAIN_COLORS = {
   general: '#64748b',   // slate-500
 };
 
-const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Graph" }) => {
+const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Graph", clientContext = "" }) => {
   const containerRef = useRef(null);
   const fgRef = useRef();
 
@@ -21,6 +22,49 @@ const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Grap
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const [isRotating, setIsRotating] = useState(true);
   const [showLabels, setShowLabels] = useState(true);
+
+  // Chat State
+  const [chatHistory, setChatHistory] = useState([]);
+  const [chatInput, setChatInput] = useState('');
+  const [isChatLoading, setIsChatLoading] = useState(false);
+  const chatEndRef = useRef(null);
+
+  useEffect(() => {
+    setChatHistory([]);
+    setChatInput('');
+  }, [selectedNode]);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatHistory]);
+
+  const handleSendNodeChat = async (e) => {
+    e.preventDefault();
+    if (!chatInput.trim() || isChatLoading || !selectedNode) return;
+
+    const userMsg = chatInput.trim();
+    setChatInput('');
+    setChatHistory(prev => [...prev, { role: 'user', content: userMsg }]);
+    setIsChatLoading(true);
+
+    try {
+      const response = await api.post('/api/graph/node-chat', {
+        question: userMsg,
+        nodeData: selectedNode.data || {},
+        clientContext,
+        history: chatHistory.map(h => ({ role: h.role === 'user' ? 'user' : 'model', text: h.content })),
+      });
+
+      if (response.data.success) {
+        setChatHistory(prev => [...prev, { role: 'model', content: response.data.answer }]);
+      }
+    } catch (error) {
+      console.error("Node chat error:", error);
+      setChatHistory(prev => [...prev, { role: 'model', content: "Sorry, I couldn't process that right now." }]);
+    } finally {
+      setIsChatLoading(false);
+    }
+  };
 
   // Parse Graph Data
   const { nodes, edges } = useMemo(() => {
@@ -443,9 +487,40 @@ const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Grap
             </div>
 
             {selectedNode.type !== 'card' && selectedNode.type !== 'session' && (
-              <button className="mt-6 w-full flex items-center justify-center gap-2 rounded-xl bg-sky-500 hover:bg-sky-400 px-4 py-3 text-[13px] font-bold uppercase tracking-widest text-white transition shadow-[0_0_20px_rgba(14,165,233,0.4)]">
-                <FileText size={16} /> Read Full Provisions
-              </button>
+              <div className="mt-6 flex flex-col gap-3 border-t border-white/10 pt-4">
+                {/* Ephemeral Chat UI */}
+                <div className="flex flex-col gap-2 max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 pr-2">
+                  {chatHistory.length === 0 ? (
+                    <p className="text-[11px] text-slate-400 italic text-center">Ask AI about this specific section...</p>
+                  ) : (
+                    chatHistory.map((msg, i) => (
+                      <div key={i} className={`p-2.5 rounded-xl text-[12px] leading-relaxed ${msg.role === 'user' ? 'bg-sky-500/20 text-sky-100 ml-4 border border-sky-500/30' : 'bg-white/5 text-slate-200 mr-4 border border-white/10'}`}>
+                        {msg.content}
+                      </div>
+                    ))
+                  )}
+                  {isChatLoading && (
+                    <div className="p-2.5 rounded-xl bg-white/5 text-slate-200 mr-4 border border-white/10 w-fit">
+                      <Loader2 size={14} className="animate-spin text-sky-400" />
+                    </div>
+                  )}
+                  <div ref={chatEndRef} />
+                </div>
+                
+                <form onSubmit={handleSendNodeChat} className="flex items-center gap-2 mt-1 relative">
+                  <input
+                    type="text"
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    placeholder="Ask about this node..."
+                    disabled={isChatLoading}
+                    className="flex-1 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-[12px] text-white placeholder:text-slate-500 outline-none focus:border-sky-500/50 transition pr-10"
+                  />
+                  <button type="submit" disabled={isChatLoading || !chatInput.trim()} className="absolute right-1 top-1 bottom-1 p-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-white disabled:opacity-50 transition flex items-center justify-center">
+                    <Send size={12} />
+                  </button>
+                </form>
+              </div>
             )}
           </div>
         )}

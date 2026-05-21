@@ -708,6 +708,7 @@ const AnswerCard = ({
                     graphData={graphData} 
                     onClose={() => setShowGraph(false)}
                     title={`Session Graph: ${question.substring(0, 30)}...`}
+                    clientContext={question}
                   />
                 </div>
               )}
