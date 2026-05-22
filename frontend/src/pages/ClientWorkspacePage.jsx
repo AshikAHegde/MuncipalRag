@@ -167,10 +167,10 @@ export default function ClientWorkspacePage() {
                 <div className="space-y-4">
                   <div>
                     <label className="text-xs text-slate-500 block mb-1">Status</label>
-                    <select value={client.caseDetails?.status} onChange={e => setClient({...client, caseDetails: {...client.caseDetails, status: e.target.value}})} className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm outline-none dark:border-white/10 dark:text-white">
-                      <option value="active">Active</option>
-                      <option value="pending">Pending</option>
-                      <option value="closed">Closed</option>
+                    <select value={client.caseDetails?.status} onChange={e => setClient({...client, caseDetails: {...client.caseDetails, status: e.target.value}})} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none dark:border-white/10 dark:bg-[#131d26] dark:text-white">
+                      <option value="active" className="bg-white dark:bg-[#131d26] dark:text-white">Active</option>
+                      <option value="pending" className="bg-white dark:bg-[#131d26] dark:text-white">Pending</option>
+                      <option value="closed" className="bg-white dark:bg-[#131d26] dark:text-white">Closed</option>
                     </select>
                   </div>
                   <div>

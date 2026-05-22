@@ -52,10 +52,7 @@ const SearchArea = ({
   const isSingleRun = singleRun || Boolean(clientId);
   const [query, setQuery] = useState('');
   const [hasAutoSubmitted, setHasAutoSubmitted] = useState(false);
-  const [mode, setMode] = useState(() => {
-    const savedMode = localStorage.getItem('preferredMode');
-    return (user?.role === 'lawyer' && savedMode === 'lawyer') ? 'lawyer' : 'general';
-  });
+  const [mode, setMode] = useState('general');
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [error, setError] = useState(null);
@@ -105,13 +102,10 @@ const SearchArea = ({
   }, [mode, activeSessionId]);
 
   useEffect(() => {
-    if (user?.role === 'lawyer') {
-      localStorage.setItem('preferredMode', mode);
-    }
-    if (user?.role !== 'lawyer' && mode === 'lawyer') {
+    if (mode !== 'general') {
       setMode('general');
     }
-  }, [mode, user?.role]);
+  }, [mode]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -172,7 +166,9 @@ const SearchArea = ({
 
         if (!isCancelled) {
           const sessions = normalizeChatSessions(response.data.chatSessions || []);
-          const visibleSessions = sessions;
+          // In client workspace (singleRun), show all chats including lawyer-mode ones.
+          // On the main Legal AI page, only show general chats.
+          const visibleSessions = isSingleRun ? sessions : sessions.filter((s) => s.mode === 'general');
 
           setChatSessions(visibleSessions);
           setActiveSessionId((currentActiveSessionId) => {
@@ -534,7 +530,7 @@ const SearchArea = ({
                     {session.title || (clientName ? `${clientName} Analysis ${index + 1}` : `Chat ${index + 1}`)}
                   </p>
                   <span className="shrink-0 text-[11px] uppercase tracking-[0.08em] text-[#6b7280] dark:text-[#a9c3d8]">
-                    {session.mode === 'lawyer' ? t.lawyerModeShort : t.generalModeShort}
+                    {t.generalModeShort}
                   </span>
                 </div>
                 <p className="mt-2 line-clamp-2 text-xs leading-5 text-[#6b7280] dark:text-[#a9c3d8]">
@@ -618,7 +614,7 @@ const SearchArea = ({
               </h2>
               <p className="truncate text-xs text-[#6b7280] dark:text-[#a9c3d8]">
                 {activeSession
-                  ? (isSingleRun ? 'One-time client analysis' : `${activeSession.mode === 'lawyer' ? t.lawyerModeShort : t.generalModeShort} · ${t.conversations(activeSession.conversationCount)}`)
+                  ? (isSingleRun ? 'One-time client analysis' : `${t.generalModeShort} · ${t.conversations(activeSession.conversationCount)}`)
                   : (isSingleRun ? 'One-time client analysis' : 'General legal Q&A')}
               </p>
             </div>
@@ -638,46 +634,21 @@ const SearchArea = ({
                 ))}
               </select>
             </label>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => startNewChat('general')}
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#e2ddd4] px-2.5 text-sm text-[#6b7280] transition hover:bg-moss-50 dark:border-[#355269] dark:text-[#a9c3d8] dark:hover:bg-[#1d3344]"
-                title={t.newButton}
-              >
-                <Plus size={14} />
-                <span className="hidden md:inline">{t.newButton}</span>
-              </button>
-            </div>
-            {user?.role === 'lawyer' && (
-              <button
-                type="button"
-                onClick={() => handleModeSwitch('general')}
-                className={`inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-sm transition ${mode === 'general'
-                    ? 'premium-btn-primary'
-                    : 'premium-btn-secondary dark:text-[#a9c3d8] dark:hover:bg-[#1d3344]'
-                  }`}
-                title={t.generalModeShort}
-              >
-                <MessageSquareText size={14} />
-                <span className="hidden sm:inline">{t.generalModeShort}</span>
-              </button>
+            {!isSingleRun && (
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => startNewChat('general')}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#e2ddd4] px-2.5 text-sm text-[#6b7280] transition hover:bg-moss-50 dark:border-[#355269] dark:text-[#a9c3d8] dark:hover:bg-[#1d3344]"
+                  title={t.newButton}
+                >
+                  <Plus size={14} />
+                  <span className="hidden md:inline">{t.newButton}</span>
+                </button>
+              </div>
             )}
-            {user?.role === 'lawyer' && (
-              <button
-                type="button"
-                onClick={() => handleModeSwitch('lawyer')}
-                className={`inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-sm transition ${mode === 'lawyer'
-                    ? 'premium-btn-primary'
-                    : 'premium-btn-secondary dark:text-[#a9c3d8] dark:hover:bg-[#1d3344]'
-                  }`}
-                title={t.lawyerModeShort}
-              >
-                <Search size={14} />
-                <span className="hidden sm:inline">{t.lawyerModeShort}</span>
-              </button>
-            )}
-            {user?.role === 'lawyer' && (
+
+            {isSingleRun && (
               <button
                 type="button"
                 onClick={() => setShowSessionGraph(!showSessionGraph)}
@@ -692,6 +663,7 @@ const SearchArea = ({
                 <span className="hidden sm:inline">{showSessionGraph ? 'Close' : 'Insights'}</span>
               </button>
             )}
+
           </div>
         </header>
 
@@ -775,21 +747,7 @@ const SearchArea = ({
                 </label>
               </div>
               <div className="premium-input flex items-end gap-2 rounded-xl p-2 dark:bg-[#1b2c3a]">
-                {mode === 'lawyer' ? (
-                  <textarea
-                    ref={inputRef}
-                    rows={3}
-                    value={query}
-                    onChange={(event) => {
-                      setQuery(event.target.value);
-                      setVoiceDraftNotice('');
-                    }}
-                    placeholder={t.lawyerPlaceholder}
-                    disabled={isLoading}
-                    className="max-h-44 min-h-20 flex-1 resize-y border-0 bg-transparent px-2 py-1 text-sm text-[#1a1a1a] outline-none placeholder:text-[#8a8f99] disabled:opacity-50 dark:text-[#dce8f3] dark:placeholder:text-[#95afc4]"
-                  />
-                ) : (
-                  <input
+                <input
                     ref={inputRef}
                     type="text"
                     value={query}
@@ -801,7 +759,6 @@ const SearchArea = ({
                     disabled={isLoading}
                     className="h-10 flex-1 border-0 bg-transparent px-2 text-sm text-[#1a1a1a] outline-none placeholder:text-[#8a8f99] disabled:opacity-50 dark:text-[#dce8f3] dark:placeholder:text-[#95afc4]"
                   />
-                )}
 
                 <button
                   type="button"
@@ -834,8 +791,8 @@ const SearchArea = ({
         )}
       </div>
 
-      {/* Graph Sidebar (Glass Overlay) */}
-      {showSessionGraph && user?.role === 'lawyer' && (
+      {/* Graph Sidebar (Glass Overlay) — only in client workspace */}
+      {showSessionGraph && isSingleRun && (
         <aside
           className="fixed inset-0 z-[100] w-full h-full bg-cream-50/95 dark:bg-[#0b1219]/90 backdrop-blur-3xl animate-in zoom-in-95 duration-300 flex flex-col"
         >
@@ -866,6 +823,7 @@ const SearchArea = ({
           )}
         </aside>
       )}
+
 
       {!isSingleRun && isMobileHistoryOpen && (
         <>

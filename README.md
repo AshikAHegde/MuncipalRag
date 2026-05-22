@@ -174,6 +174,58 @@ Practicing lawyers who need deep, structured, multi-domain analysis for their cl
 
 ---
 
+## 🧠 Backend AI Models and Agents
+
+### AI Models Used
+
+| Model / Service | Provider | Main Use | Backend Location |
+| --------------- | -------- | -------- | ---------------- |
+| `llama-3.1-8b-instant` | Groq | Main LLM for legal reasoning, answer generation, query rewriting, domain routing, JSON agent outputs, report generation, translation, and conflict audit | `backend/config/appConfig.js`, `backend/services/ragService.js`, `backend/services/legalAgentUtils.js`, `backend/services/translationService.js` |
+| `models/gemini-embedding-001` | Google Gemini | Creates vector embeddings for uploaded PDF chunks and user search queries | `backend/config/appConfig.js`, `backend/services/ragService.js` |
+| `models/gemini-1.5-flash` | Google Gemini | OCR fallback for scanned PDFs when normal text extraction fails | `backend/services/ragService.js` |
+| `models/gemini-2.5-flash` | Google Gemini | Speech-to-text transcription for voice input | `backend/config/appConfig.js`, `backend/services/speechService.js` |
+| `models/gemini-2.5-flash-preview-tts` | Google Gemini | Text-to-speech audio generation for AI answers | `backend/config/appConfig.js`, `backend/services/speechService.js` |
+| Pinecone vector index | Pinecone | Stores PDF embeddings and performs semantic similarity search with domain filters | `backend/services/ragService.js`, `backend/services/retrievalAgent.js` |
+
+> Main reasoning model: **Groq `llama-3.1-8b-instant`**.  
+> Supporting AI models: **Gemini embeddings, OCR, transcription, and TTS**.
+
+### Backend Agents
+
+| Agent / Service | What It Does | Model / Tool Used | Backend Location |
+| --------------- | ------------ | ----------------- | ---------------- |
+| Agent Orchestrator | Controls the full query flow, detects legal domain, chooses General Mode or Lawyer Mode, and coordinates all agents | Groq LLM + fallback routing logic | `backend/services/agentOrchestrator.js` |
+| Retrieval Agent | Rewrites the query, embeds it, searches Pinecone, and returns relevant legal PDF chunks | Groq for query rewrite, Gemini embeddings, Pinecone search | `backend/services/retrievalAgent.js`, `backend/services/ragService.js` |
+| General Agent | Generates normal user-facing legal answers from retrieved document context | Groq LLM | `backend/services/generalAgent.js` |
+| Criminal Agent | Detects criminal-law conflicts from the client report using retrieved criminal law provisions | Groq LLM | `backend/services/criminalAgent.js` |
+| Civil Agent | Detects civil-law conflicts from the client report using retrieved civil law provisions | Groq LLM | `backend/services/civilAgent.js` |
+| Corporate Agent | Detects corporate-law conflicts from the client report using retrieved corporate law provisions | Groq LLM | `backend/services/corporateAgent.js` |
+| Tax Agent | Detects tax-law conflicts from the client report using retrieved tax law provisions | Groq LLM | `backend/services/taxAgent.js` |
+| Comparison Agent | Filters weak/irrelevant conflicts and adds cross-domain impact links | Groq LLM | `backend/services/comparisonAgent.js` |
+| Report Agent | Builds the final structured lawyer report with conflicts, sources, recommendations, and summary | Groq LLM | `backend/services/reportAgent.js` |
+| Temp Chat / Node Chat Agent | Answers follow-up questions about a selected Legal Knowledge Graph node | Groq LLM | `backend/services/tempChatAgent.js` |
+| Translation Service | Translates AI responses while preserving markdown, facts, numbering, and structure | Groq LLM | `backend/services/translationService.js` |
+| Speech Service | Converts voice input to text and AI text responses to audio | Gemini transcription + Gemini TTS | `backend/services/speechService.js` |
+| Report Export Service | Generates downloadable PDF and Excel reports from saved analysis data | PDFKit + ExcelJS, no LLM | `backend/services/reportService.js` |
+| Storage Service | Uploads, downloads, streams, and deletes legal PDFs from cloud storage | Cloudinary, no LLM | `backend/services/storageService.js` |
+
+### Backend AI Flow
+
+1. **Admin uploads PDF** → Cloudinary stores the file.
+2. **Text extraction** → LangChain `PDFLoader` extracts text; Gemini `models/gemini-1.5-flash` is used if OCR fallback is needed.
+3. **Chunking** → `RecursiveCharacterTextSplitter` splits legal text into chunks.
+4. **Embedding** → Gemini `models/gemini-embedding-001` converts chunks into 768-dimensional vectors.
+5. **Indexing** → Pinecone stores the vectors with metadata like domain, section, source, page, and keywords.
+6. **User asks query** → Groq rewrites the query for better search.
+7. **Retrieval** → Gemini embeds the query and Pinecone returns matching legal chunks.
+8. **General Mode** → General Agent uses Groq to answer from retrieved legal context.
+9. **Lawyer Mode** → Criminal, Civil, Corporate, and Tax agents run in parallel using Groq.
+10. **Conflict audit** → Comparison Agent uses Groq to remove weak matches and add cross-domain impact.
+11. **Final report** → Report Agent uses Groq to generate the structured legal report with cited sources.
+12. **Optional language/audio** → Translation uses Groq, transcription uses Gemini Flash, and TTS uses Gemini TTS.
+
+---
+
 ## 🚀 Getting Started
 
 ### Prerequisites
@@ -207,7 +259,9 @@ PINECONE_INDEX_NAME=your-pinecone-index
 
 GEMINI_API_KEY=your-gemini-api-key
 GROQ_API_KEY=your-groq-api-key
-GROQ_MODEL=llama-3.3-70b-versatile
+GROQ_MODEL=llama-3.1-8b-instant
+GEMINI_TRANSCRIPTION_MODEL=models/gemini-2.5-flash
+GEMINI_TTS_MODEL=models/gemini-2.5-flash-preview-tts
 
 CLOUDINARY_CLOUD_NAME=your-cloud-name
 CLOUDINARY_API_KEY=your-cloudinary-key

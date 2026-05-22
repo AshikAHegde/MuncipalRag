@@ -316,7 +316,7 @@ const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Grap
               const group = new THREE.Group();
 
               // Colors
-              const color = node.type === 'card' ? '#38bdf8' : // sky
+              const color = node.type === 'card' ? '#1e1e1e' : // black for case analysis
                 node.type === 'session' ? '#a855f7' : // purple
                   node.type === 'section' ? (node.data?.isCitation ? '#94a3b8' : (DOMAIN_COLORS[node.data?.domain] || DOMAIN_COLORS.general)) :
                     '#475569';
@@ -334,6 +334,18 @@ const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Grap
               });
               const sphere = new THREE.Mesh(geometry, material);
               group.add(sphere);
+
+              // White border outline for the case analysis node
+              if (node.type === 'card') {
+                const ringGeo = new THREE.SphereGeometry(baseScale * 1.05, 24, 24);
+                const ringMat = new THREE.MeshBasicMaterial({
+                  color: '#ffffff',
+                  wireframe: true,
+                  transparent: true,
+                  opacity: 0.6,
+                });
+                group.add(new THREE.Mesh(ringGeo, ringMat));
+              }
 
               // 2. Outer Holographic Glowing Aura
               const auraGeometry = new THREE.SphereGeometry(baseScale * 1.6, 24, 24);
@@ -373,8 +385,8 @@ const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Grap
           <h4 className="mb-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Graph Legend</h4>
           <div className="space-y-2.5">
             <div className="flex items-center gap-3 text-xs">
-              <span className="h-3 w-3 rounded-full bg-sky-400 shadow-[0_0_10px_rgba(56,189,248,0.8)]" />
-              <span className="text-slate-200">AI Answer Card</span>
+              <span className="h-3 w-3 rounded-full bg-black border border-white/40 shadow-[0_0_10px_rgba(0,0,0,0.8)]" />
+              <span className="text-slate-200">Client Case Analysis</span>
             </div>
             <div className="flex items-center gap-3 text-xs">
               <span className="h-3 w-3 rounded-full bg-purple-500 shadow-[0_0_10px_rgba(168,85,247,0.8)]" />
@@ -475,13 +487,22 @@ const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Grap
               )}
               {selectedNode.type === 'card' && (
                 <>
-                  <div className="flex items-center gap-2 text-sky-400 text-sm font-semibold">
-                    <Info size={16} />
-                    <span>Mode: {selectedNode.mode}</span>
-                  </div>
-                  <div className="p-4 text-sm rounded-xl bg-white/5 border border-white/5 leading-relaxed">
-                    {selectedNode.answer?.substring(0, 250)}...
-                  </div>
+                  {selectedNode.data?.question && (
+                    <div className="mb-3">
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 opacity-80">Case Background</p>
+                      <div className="p-4 text-sm rounded-xl bg-white/5 border border-white/5 leading-relaxed whitespace-pre-wrap">
+                        {selectedNode.data.question}
+                      </div>
+                    </div>
+                  )}
+                  {selectedNode.data?.answer && (
+                    <div className="mb-3">
+                      <p className="text-xs font-bold text-emerald-400 uppercase tracking-widest mb-2 opacity-80">AI Analysis</p>
+                      <div className="p-4 text-sm rounded-xl bg-emerald-500/10 border border-emerald-500/10 leading-relaxed whitespace-pre-wrap">
+                        {selectedNode.data.answer.substring(0, 500)}{selectedNode.data.answer.length > 500 ? '...' : ''}
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
             </div>
@@ -506,7 +527,7 @@ const LegalKnowledgeGraph = ({ graphData, onClose, title = "Legal Knowledge Grap
                   )}
                   <div ref={chatEndRef} />
                 </div>
-                
+
                 <form onSubmit={handleSendNodeChat} className="flex items-center gap-2 mt-1 relative">
                   <input
                     type="text"

@@ -135,7 +135,8 @@ export const getSessionGraph = async (req, res) => {
               section: src.section,
               page: src.page,
               text: src.text,
-              source: src.source
+              source: src.source,
+              isCitation: true
             }
           });
           processedSections.add(sectionId);
@@ -156,7 +157,7 @@ export const getSessionGraph = async (req, res) => {
           const sectionLabel = conflict.section || (conflict.section_number ? `Section ${conflict.section_number}` : `Issue ${cIdx + 1}`);
           const solution = getConflictSolution(conflict);
           const matchedSource = findMatchingSourceNode(sourceNodes, conflict);
-          
+
           nodes.push({
             id: conflictId,
             type: 'section',
@@ -206,16 +207,16 @@ export const getSessionGraph = async (req, res) => {
       legalConnections.forEach(node => {
         node.edges.forEach(edge => {
           const targetId = `sec-${edge.targetSectionId}`;
-          
+
           edges.push({
             id: `e-sec-sec-${node.sectionId}-${edge.targetSectionId}`,
             source: `sec-${node.sectionId}`,
             target: targetId,
             label: edge.type,
-            data: { 
-              type: edge.type, 
+            data: {
+              type: edge.type,
               reason: edge.reason,
-              isInterSection: true 
+              isInterSection: true
             }
           });
 
@@ -318,9 +319,6 @@ export const getProjectGraph = async (req, res) => {
     legalConnections.forEach(node => {
       node.edges.forEach(edge => {
         const targetId = `sec-${edge.targetSectionId}`;
-        // Only show links if the target section is also in the current view?
-        // Or should we add the target section as a new node?
-        // Let's add the link if it exists.
         edges.push({
           id: `e-sec-sec-${node.sectionId}-${edge.targetSectionId}`,
           source: `sec-${node.sectionId}`,
@@ -372,7 +370,7 @@ export const getMessageConflictGraph = async (req, res) => {
     const nodes = [];
     const edges = [];
     const sourceNodes = [];
-    
+
     // 1. Central Card Node
     nodes.push({
       id: `message-${message._id}`,
@@ -432,7 +430,7 @@ export const getMessageConflictGraph = async (req, res) => {
       const sectionLabel = conflict.section || (conflict.section_number ? `Section ${conflict.section_number}` : `Provision ${idx + 1}`);
       const solution = getConflictSolution(conflict);
       const matchedSource = findMatchingSourceNode(sourceNodes, conflict);
-      
+
       nodes.push({
         id: conflictId,
         type: 'section',
@@ -471,7 +469,7 @@ export const getMessageConflictGraph = async (req, res) => {
 
     // 4. Cross-Domain and Inter-Section Links
     const sectionIds = conflicts.map(c => c.section || (c.section_number ? `Section ${c.section_number}` : null)).filter(Boolean);
-    
+
     if (sectionIds.length > 0) {
       const legalConnections = await LegalGraph.find({
         sectionId: { $in: sectionIds }
@@ -483,15 +481,15 @@ export const getMessageConflictGraph = async (req, res) => {
           const sourceId = nodes.find(n => n.label === node.sectionId || n.data?.section === node.sectionId)?.id;
 
           if (sourceId) {
-             edges.push({
+            edges.push({
               id: `e-sec-sec-${node.sectionId}-${edge.targetSectionId}`,
               source: sourceId,
               target: targetId,
               label: edge.type,
-              data: { 
-                type: edge.type, 
+              data: {
+                type: edge.type,
                 reason: edge.reason,
-                isInterSection: true 
+                isInterSection: true
               }
             });
 
@@ -518,7 +516,7 @@ export const getMessageConflictGraph = async (req, res) => {
 export const postNodeChat = async (req, res) => {
   try {
     const { question, nodeData, clientContext, history } = req.body;
-    
+
     if (!question || !nodeData) {
       return res.status(400).json({ success: false, error: 'Question and node data are required.' });
     }
@@ -532,5 +530,3 @@ export const postNodeChat = async (req, res) => {
     res.status(500).json({ success: false, error: 'Internal server error during node chat.' });
   }
 };
-
-
