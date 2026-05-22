@@ -15,8 +15,19 @@ import { getLanguageConfig } from "../config/languages.js";
 import Document from "../models/Document.js";
 import { downloadPdfBuffer } from "./storageService.js";
 
-const pinecone = new Pinecone();
-const pineconeIndex = pinecone.Index(process.env.PINECONE_INDEX_NAME);
+let pineconeIndex = null;
+
+function getPineconeIndex() {
+  if (!pineconeIndex) {
+    if (!process.env.PINECONE_INDEX_NAME) {
+      throw new Error("PINECONE_INDEX_NAME is not configured.");
+    }
+
+    pineconeIndex = new Pinecone().Index(process.env.PINECONE_INDEX_NAME);
+  }
+
+  return pineconeIndex;
+}
 
 function normalizeHistory(history = []) {
   if (!Array.isArray(history)) {
@@ -322,12 +333,21 @@ function buildFallbackAnswer(context, rewrittenQuery, language = "en") {
 }
 
 function normalizeMatch(match, index) {
+  const source = match.metadata?.source ?? "";
+  const page = match.metadata?.pageNumber ?? "N/A";
+  const inferredSection = sanitizeText(match.metadata?.text).match(
+    /\b(?:section|sec\.?|ipc|crpc|cpc|article|rule|order)\s+[0-9]+[A-Za-z-]*(?:\s*(?:[-:]\s*)[^\n.;]{1,90})?/i,
+  )?.[0]?.replace(/\s+/g, " ").trim();
+  const sourceLabel = [source, page !== "N/A" ? `page ${page}` : ""]
+    .filter(Boolean)
+    .join(", ");
+
   return {
-    page: match.metadata?.pageNumber ?? "N/A",
-    section: match.metadata?.section || `Match ${index + 1}`,
+    page,
+    section: match.metadata?.section || inferredSection || sourceLabel || `Source ${index + 1}`,
     text: match.metadata?.text ?? "",
     score: match.score ?? null,
-    source: match.metadata?.source ?? "",
+    source,
     domain: match.metadata?.domain ?? "",
     keywords: Array.isArray(match.metadata?.keywords)
       ? match.metadata.keywords
@@ -531,7 +551,7 @@ function buildFallbackComplianceReview(submission, lineAnalyses = [], language =
 }
 
 async function retrieveMatches(queryVector, topK = 5) {
-  const searchResults = await pineconeIndex.query({
+  const searchResults = await getPineconeIndex().query({
     topK,
     vector: queryVector,
     includeMetadata: true,
@@ -553,7 +573,7 @@ export async function searchLegalMatches({
     throw new Error("Embedding generation failed for the search query.");
   }
 
-  const searchResults = await pineconeIndex.query({
+  const searchResults = await getPineconeIndex().query({
     topK,
     vector: queryVector,
     includeMetadata: true,
@@ -787,7 +807,7 @@ export async function findUploadedDocument(docId, user) {
 }
 
 export async function deleteDocumentVectors(docId) {
-  await pineconeIndex.deleteMany({
+  await getPineconeIndex().deleteMany({
     filter: {
       docId: { $eq: docId },
     },
@@ -943,7 +963,7 @@ export async function processDocument(document, sourceBuffer = null) {
       );
     }
 
-    await pineconeIndex.upsert({
+    await getPineconeIndex().upsert({
       records,
     });
 

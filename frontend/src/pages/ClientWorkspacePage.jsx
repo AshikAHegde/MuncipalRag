@@ -1,18 +1,17 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import React, { useCallback, useState, useEffect } from 'react';
+import { useParams, Link } from 'react-router-dom';
 import { ChevronLeft, Save, FileText, MessageSquareText, FileUp, Loader2 } from 'lucide-react';
 import api from '../lib/api.js';
 import SearchArea from '../components/SearchArea.jsx';
 
 export default function ClientWorkspacePage() {
   const { clientId } = useParams();
-  const navigate = useNavigate();
   const [client, setClient] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('details'); // details, chat, docs
   const [isSaving, setIsSaving] = useState(false);
 
-  const fetchClientData = async () => {
+  const fetchClientData = useCallback(async () => {
     try {
       setLoading(true);
       const clientRes = await api.get(`/api/clients/${clientId}`);
@@ -22,11 +21,11 @@ export default function ClientWorkspacePage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [clientId]);
 
   useEffect(() => {
     fetchClientData();
-  }, [clientId]);
+  }, [fetchClientData]);
 
   const handleUpdate = async (e) => {
     e?.preventDefault();

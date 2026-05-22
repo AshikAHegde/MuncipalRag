@@ -173,7 +173,7 @@ const IssueCard = ({ conflict, index }) => {
 };
 
 // ─── Conflicts grid header ────────────────────────────────────────────────────
-const ConflictsGrid = ({ conflicts, domain }) => {
+const ConflictsGrid = ({ conflicts }) => {
   const domainCounts = conflicts.reduce((acc, c) => {
     const d = (c.domain || 'unknown').toLowerCase();
     acc[d] = (acc[d] || 0) + 1;
@@ -241,22 +241,42 @@ const formatDetailValue = (value) => {
 
 const getFileNameFromDisposition = (dispositionHeader, fallbackFileName) => {
   if (!dispositionHeader) return fallbackFileName;
-  const fileNameMatch = dispositionHeader.match(/filename\*?=(?:UTF-8''|\")?([^\";\n]+)/i);
+  const fileNameMatch = dispositionHeader.match(/filename\*?=(?:UTF-8''|")?([^";\n]+)/i);
   if (!fileNameMatch?.[1]) return fallbackFileName;
-  return decodeURIComponent(fileNameMatch[1]).replace(/\"/g, '').trim() || fallbackFileName;
+  return decodeURIComponent(fileNameMatch[1]).replace(/"/g, '').trim() || fallbackFileName;
 };
+
+const isPlaceholderSection = (value = '') => /^match\s+\d+$/i.test(String(value).trim());
+
+const speechLangMap = {
+  en: 'en-IN',
+  hi: 'hi-IN',
+  mr: 'mr-IN',
+};
+
+const getReadableText = (text = '') => String(text)
+  .replace(/```[\s\S]*?```/g, ' ')
+  .replace(/`([^`]+)`/g, '$1')
+  .replace(/\*\*([^*]+)\*\*/g, '$1')
+  .replace(/\*([^*]+)\*/g, '$1')
+  .replace(/^#{1,6}\s+/gm, '')
+  .replace(/^\s*[-*+]\s+/gm, '')
+  .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+  .replace(/[_>~|]/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim();
 
 const getSourceDisplay = (src = {}, index = 0) => {
   const metadata = src.metadata || {};
   const page = src.page ?? src.pageNumber ?? metadata.page ?? metadata.pageNumber ?? 'N/A';
-  const section =
+  const rawSection =
     src.section
     || src.sectionName
     || src.section_name
     || metadata.section
     || metadata.sectionName
     || src.title
-    || `Match ${index + 1}`;
+    || '';
   const sourceName = src.source || src.fileName || src.filename || metadata.source || metadata.fileName || '';
   const text =
     src.text
@@ -268,6 +288,9 @@ const getSourceDisplay = (src = {}, index = 0) => {
     || metadata.content
     || '';
   const score = typeof src.score === 'number' ? src.score : null;
+  const section = rawSection && !isPlaceholderSection(rawSection)
+    ? rawSection
+    : [sourceName, page !== 'N/A' ? `Page ${page}` : ''].filter(Boolean).join(' - ') || `Source ${index + 1}`;
 
   return {
     page,
@@ -304,6 +327,7 @@ const AnswerCard = ({
   const [isLoadingGraph, setIsLoadingGraph] = useState(false);
   const [graphData, setGraphData] = useState(null);
   const audioRef = useRef(null);
+  const utteranceRef = useRef(null);
   const t = getTranslation(language);
 
   // Conflicts from multi-domain parallel scan
@@ -342,6 +366,11 @@ const AnswerCard = ({
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current = null;
+    }
+
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+      utteranceRef.current = null;
     }
   }, []);
 
@@ -393,19 +422,56 @@ const AnswerCard = ({
   };
 
   const handleSpeak = async () => {
-    if (isSpeaking && audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
+    if (isSpeaking) {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+
       audioRef.current = null;
+      utteranceRef.current = null;
       setIsSpeaking(false);
       return;
     }
 
     setAudioError('');
-    setIsSpeechLoading(true);
+    const readableText = getReadableText(answer);
+
+    if (!readableText) {
+      setAudioError(t.audioPlayError);
+      return;
+    }
+
+    if (typeof window !== 'undefined' && window.speechSynthesis && window.SpeechSynthesisUtterance) {
+      window.speechSynthesis.cancel();
+
+      const utterance = new window.SpeechSynthesisUtterance(readableText);
+      utterance.lang = speechLangMap[language] || speechLangMap.en;
+      utterance.rate = 0.95;
+      utterance.pitch = 1;
+      utterance.onstart = () => setIsSpeaking(true);
+      utterance.onend = () => {
+        utteranceRef.current = null;
+        setIsSpeaking(false);
+      };
+      utterance.onerror = () => {
+        utteranceRef.current = null;
+        setIsSpeaking(false);
+        setAudioError(t.audioPlaybackFailed);
+      };
+
+      utteranceRef.current = utterance;
+      window.speechSynthesis.speak(utterance);
+      return;
+    }
 
     try {
-      const response = await api.post('/api/speech/synthesize', { text: answer });
+      setIsSpeechLoading(true);
+      const response = await api.post('/api/speech/synthesize', { text: readableText });
       if (!response.data?.success || !response.data?.audioBase64) {
         throw new Error(response.data?.error || 'Unable to generate speech audio.');
       }
@@ -548,7 +614,7 @@ const AnswerCard = ({
           ) : (
             /* ── GENERAL / LAWYER (no conflicts) — original view ──────────── */
             <div>
-              <div className={`prose prose-sm max-w-none dark:prose-invert ${isNotAvailable ? 'text-[#6b7280] italic dark:text-[#a9c3d8]' : 'text-[#1a1a1a] dark:text-[#dce8f3]'}`}>
+              <div className={`answer-markdown prose prose-sm max-w-none dark:prose-invert ${isNotAvailable ? 'text-[#6b7280] italic dark:text-[#a9c3d8]' : 'text-[#1a1a1a] dark:text-[#dce8f3]'}`}>
                 <ReactMarkdown>{displayedAnswer}</ReactMarkdown>
                 {isTyping && <span className="ml-1 inline-block h-4 w-1 animate-pulse bg-[#8ec3e8] dark:bg-[#62abdf]" />}
               </div>

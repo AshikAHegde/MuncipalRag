@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   History,
   Loader2,
@@ -86,15 +86,18 @@ const SearchArea = ({
   const [showSessionGraph, setShowSessionGraph] = useState(false);
   const [isLoadingSessionGraph, setIsLoadingSessionGraph] = useState(false);
   const [sessionGraphData, setSessionGraphData] = useState(null);
-  const [showProjectGraph, setShowProjectGraph] = useState(false);
-  const [isLoadingProjectGraph, setIsLoadingProjectGraph] = useState(false);
-  const [projectGraphData, setProjectGraphData] = useState(null);
   const MIN_SIDEBAR = 180;
   const MAX_SIDEBAR = 480;
   const GRAPH_SIDEBAR_WIDTH = 450;
 
-  const activeSession = chatSessions.find((session) => session.id === activeSessionId) || null;
-  const activeMessages = activeSession?.conversations || [];
+  const activeSession = useMemo(
+    () => chatSessions.find((session) => session.id === activeSessionId) || null,
+    [activeSessionId, chatSessions],
+  );
+  const activeMessages = useMemo(
+    () => activeSession?.conversations || [],
+    [activeSession],
+  );
   const t = getTranslation(selectedLanguage);
 
   useEffect(() => {
@@ -172,15 +175,17 @@ const SearchArea = ({
           const visibleSessions = sessions;
 
           setChatSessions(visibleSessions);
-          setActiveSessionId((currentActiveSessionId) =>
-            visibleSessions.some((session) => session.id === currentActiveSessionId)
-              ? currentActiveSessionId
-              : (visibleSessions[visibleSessions.length - 1]?.id || null),
-          );
+          setActiveSessionId((currentActiveSessionId) => {
+            const nextSession = visibleSessions.some((session) => session.id === currentActiveSessionId)
+              ? visibleSessions.find((session) => session.id === currentActiveSessionId)
+              : visibleSessions[visibleSessions.length - 1];
 
-          if (visibleSessions.length > 0 && !activeSessionId) {
-            setMode(visibleSessions[visibleSessions.length - 1].mode || 'general');
-          }
+            if (nextSession) {
+              setMode(nextSession.mode || 'general');
+            }
+
+            return nextSession?.id || null;
+          });
         }
       } catch (historyError) {
         if (!isCancelled) {
@@ -244,7 +249,7 @@ const SearchArea = ({
 
     fetchMessageGraph();
     return () => { isCancelled = true; };
-  }, [activeSessionId, showSessionGraph]);
+  }, [activeSessionId, chatSessions, showSessionGraph]);
 
   const deleteChatSession = async (sessionId) => {
     if (deletingSessionId) return;
@@ -292,7 +297,7 @@ const SearchArea = ({
     startNewChat(nextMode);
   };
 
-  const upsertChatSession = (nextSession) => {
+  const upsertChatSession = useCallback((nextSession) => {
     setChatSessions((currentSessions) => {
       const existingIndex = currentSessions.findIndex((session) => session.id === nextSession.id);
 
@@ -304,9 +309,9 @@ const SearchArea = ({
       updatedSessions[existingIndex] = nextSession;
       return updatedSessions;
     });
-  };
+  }, []);
 
-  const askQuestion = async (questionToAsk, selectedMode = mode) => {
+  const askQuestion = useCallback(async (questionToAsk, selectedMode = mode) => {
     if (!questionToAsk.trim() || isLoading) return;
 
     const trimmedQuestion = questionToAsk.trim();
@@ -358,7 +363,15 @@ const SearchArea = ({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [
+    activeMessages,
+    activeSession,
+    clientId,
+    isLoading,
+    mode,
+    selectedLanguage,
+    upsertChatSession,
+  ]);
 
   const handleSearch = async (event) => {
     event?.preventDefault();
@@ -375,7 +388,7 @@ const SearchArea = ({
         setHasAutoSubmitted(true); // Don't auto-submit if they already have chats
       }
     }
-  }, [autoSubmit, initialQuery, hasAutoSubmitted, isLoadingHistory, isLoading, chatSessions.length]);
+  }, [askQuestion, autoSubmit, initialQuery, hasAutoSubmitted, isLoadingHistory, isLoading, chatSessions.length]);
 
   const stopMediaStream = () => {
     if (!mediaStreamRef.current) return;
@@ -462,7 +475,7 @@ const SearchArea = ({
 
       mediaRecorderRef.current = recorder;
       recorder.start();
-    } catch (_error) {
+    } catch {
       setSpeechError(t.microphoneBlocked);
       setIsRecording(false);
       stopMediaStream();

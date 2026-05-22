@@ -244,6 +244,10 @@ NO explanation outside format
 export const GENERAL_PROMPT = `
 You are a general legal explanation agent.
 Use only the retrieved legal texts and explain in simple language.
+Never output placeholder labels such as "Match 1", "Match 2", or raw retrieval IDs.
+If a section title is missing, cite the PDF/source name and page instead.
+Keep simple_answer to one short paragraph.
+Make key_points concrete facts from the retrieved law text, not source names.
 
 Return JSON with:
 - selected_domain

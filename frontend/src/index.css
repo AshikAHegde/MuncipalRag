@@ -194,6 +194,37 @@
   box-shadow: 0 0 0 3px rgba(98, 171, 223, 0.28);
 }
 
+.answer-markdown {
+  font-size: 0.95rem;
+  line-height: 1.7;
+}
+
+.answer-markdown h3 {
+  margin: 0 0 0.75rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.35;
+  color: inherit;
+}
+
+.answer-markdown p {
+  margin: 0.45rem 0;
+}
+
+.answer-markdown strong {
+  font-weight: 700;
+}
+
+.answer-markdown ul {
+  margin: 0.4rem 0 0.8rem;
+  padding-left: 1.25rem;
+  list-style: disc;
+}
+
+.answer-markdown li {
+  margin: 0.25rem 0;
+}
+
 * {
   transition:
     background-color 180ms ease,
